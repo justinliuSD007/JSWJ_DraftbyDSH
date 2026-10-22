@@ -517,14 +517,6 @@ window.__ModuleLoader__.load({
         setScreen("list");
       };
 
-      const resyncSummary = async () => {
-        await run(async () => {
-          await call("summary.sync", { id: task.id });
-          setTask(await call("tasks.get", { id: task.id }));
-          setNotice("任务总结已同步到多维表格。");
-        });
-      };
-
       const fmtTime = (value) => {
         if (!value) return "-";
         const date = new Date(value);
@@ -2019,11 +2011,6 @@ window.__ModuleLoader__.load({
                       { style: s.footer },
                       h("button", { style: s.btn, onClick: finishFlow }, "返回任务列表"),
                       h("button", { style: s.btnSecondary, onClick: () => newTask(flow) }, "新建同类任务"),
-                      h(
-                        "button",
-                        { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: resyncSummary },
-                        task.summarySync?.ok ? "重新同步总结" : "同步总结到多维表格",
-                      ),
                     ),
                   )
                 : h(

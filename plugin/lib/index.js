@@ -450,10 +450,14 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         }
         let summarySync = null;
         if (updated.status === "completed") {
-          try {
-            summarySync = await syncSummary(cfg, updated);
-          } catch (err) {
-            summarySync = { ok: false, error: String((err && err.message) || err) };
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+              summarySync = await syncSummary(cfg, updated);
+              break;
+            } catch (err) {
+              summarySync = { ok: false, error: String((err && err.message) || err) };
+              if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 1200));
+            }
           }
           await patchTask(updated.id, { archivedSessions, summarySync });
           updated.archivedSessions = archivedSessions;
