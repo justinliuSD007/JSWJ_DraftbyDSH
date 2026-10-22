@@ -841,9 +841,9 @@ window.__ModuleLoader__.load({
                 ),
                 form.attrs.archive === "polarion"
                   ? h("div", { style: s.field },
-                      h("label", { style: s.label }, "Polarion 项目空间 ID"),
-                      h("input", { style: s.input, value: form.attrs.project || "", placeholder: "例如：R06_T0（GAC_A6_T0 的项目 ID）", onChange: setAttrs("project") }),
-                      h("span", { style: s.mono }, "填 Polarion 的项目 ID，不是项目名称"),
+                      h("label", { style: s.label }, "Polarion 项目名称"),
+                      h("input", { style: s.input, value: form.attrs.project || "", placeholder: "例如：GAC_A6_T0", onChange: setAttrs("project") }),
+                      h("span", { style: s.mono }, "填 Polarion 的项目名称"),
                     )
                   : null,
               ),
