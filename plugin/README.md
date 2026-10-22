@@ -2,6 +2,8 @@
 
 技术文件起草（JSWJ_DraftbyDSH），以下简称本插件，是面向飞书知识库的起草与 AI 预审 DSH bundle。本插件提供 9 个工具、一个分步任务向导页面：
 
+视觉按高域 VIS 基础部分实现：主色高域紫 `#3B3FB6`、辅助高域红 `#A64A97`、标准渐变 50°、界面字体 HarmonyOS Sans（未安装时回退系统中文黑体）。
+
 - 知识库读写：`jswj_ping` / `jswj_wiki_list` / `jswj_doc_read` / `jswj_wiki_create` / `jswj_doc_append`
 - Word 出稿：`jswj_render_docx`（Markdown → GY-F003 .docx）
 - 发布：`jswj_publish_docx`（上传 .docx → 移入知识库文件节点）

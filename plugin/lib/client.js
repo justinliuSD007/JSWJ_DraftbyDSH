@@ -29,8 +29,13 @@ window.__ModuleLoader__.load({
       err: "var(--dsw-alias-state-error-primary, #d54941)",
     };
     const MONO = "ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace";
-    // 主按钮固定品牌蓝：部分主题里 --dsw-alias-brand-primary 是白色，不能作为填充色。
-    const PRIMARY = "#2468d8";
+    // 高域 VIS：主色 高域紫，辅助 高域红，标准渐变 50°；字体 HarmonyOS Sans。
+    const BRAND = "#3B3FB6";
+    const BRAND_ALT = "#A64A97";
+    const GRADIENT = "linear-gradient(50deg, #3B3FB6 0%, #A64A97 100%)";
+    const FONT = '"HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+    // 主按钮固定品牌紫：部分主题里 --dsw-alias-brand-primary 是白色，不能作为填充色。
+    const PRIMARY = BRAND;
 
     const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "自检", "修订", "出稿"];
     const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
@@ -89,9 +94,12 @@ window.__ModuleLoader__.load({
         overflowX: "hidden",
         background: C.base,
         color: C.text,
+        fontFamily: FONT,
         padding: "28px 26px 56px",
         boxSizing: "border-box",
       },
+      brandBar: { width: 56, height: 4, borderRadius: 2, background: GRADIENT, marginBottom: 12 },
+      brandMark: { width: 10, height: 10, borderRadius: 2, background: GRADIENT, display: "inline-block" },
       inner: { maxWidth: 1080, margin: "0 auto" },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
       eyebrow: { fontSize: 12, color: C.sub, letterSpacing: "0.04em", marginBottom: 6 },
@@ -108,6 +116,7 @@ window.__ModuleLoader__.load({
         color: "#fff",
         fontSize: 13,
         fontWeight: 550,
+        fontFamily: "inherit",
         cursor: "pointer",
       },
       btnSecondary: {
@@ -118,6 +127,7 @@ window.__ModuleLoader__.load({
         background: "transparent",
         color: C.text,
         fontSize: 13,
+        fontFamily: "inherit",
         cursor: "pointer",
       },
       btnGhost: {
@@ -128,6 +138,7 @@ window.__ModuleLoader__.load({
         background: "transparent",
         color: C.sub,
         fontSize: 13,
+        fontFamily: "inherit",
         cursor: "pointer",
       },
       btnDisabled: { opacity: 0.5, cursor: "default" },
@@ -189,7 +200,7 @@ window.__ModuleLoader__.load({
       },
       stepIndex: { fontFamily: MONO, fontSize: 11, color: C.sub, width: 18 },
       stepDone: { color: C.sub },
-      stepCurrent: { background: C.layer2, color: C.text, fontWeight: 600 },
+      stepCurrent: { background: C.layer2, color: C.text, fontWeight: 600, boxShadow: `inset 3px 0 0 ${BRAND}` },
       stepLocked: { color: C.sub, opacity: 0.55 },
       card: {
         border: `1px solid ${C.line}`,
@@ -212,6 +223,7 @@ window.__ModuleLoader__.load({
         color: C.text,
         padding: "0 10px",
         fontSize: 13,
+        fontFamily: "inherit",
         boxSizing: "border-box",
         width: "100%",
       },
@@ -456,7 +468,8 @@ window.__ModuleLoader__.load({
           h(
             "div",
             { style: s.inner },
-            h("div", { style: s.eyebrow }, FORMAL),
+            h("div", { style: s.brandBar }),
+            h("div", { style: s.eyebrow }, h("span", { style: s.brandMark }), FORMAL),
             h(
               "div",
               { style: s.head },
@@ -1365,7 +1378,8 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { style: s.inner },
-          h("div", { style: s.eyebrow }, FORMAL),
+          h("div", { style: s.brandBar }),
+          h("div", { style: s.eyebrow }, h("span", { style: s.brandMark }), FORMAL),
           h(
             "div",
             { style: s.head },
