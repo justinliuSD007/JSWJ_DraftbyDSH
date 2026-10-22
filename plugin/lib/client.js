@@ -37,7 +37,7 @@ window.__ModuleLoader__.load({
     // 主按钮固定品牌紫：部分主题里 --dsw-alias-brand-primary 是白色，不能作为填充色。
     const PRIMARY = BRAND;
 
-    const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "自检", "修订", "出稿"];
+    const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "成稿确认", "出稿"];
     const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
 
     const STEP_DESC = {
@@ -46,9 +46,8 @@ window.__ModuleLoader__.load({
         "选层级、板块与归档位置，目录由属性推导。",
         "粘贴云文档链接或上传原件，至少一份解析成功才能继续。",
         "确认大纲，补一、二级要点；三级以下可留空。",
-        "逐章生成，这一步交给助手执行。",
-        "系统自检内容、格式与其他三类，有阻断项不能出稿。",
-        "先确认本轮修订要点，再执行修订，最多三轮。",
+        "逐章生成，自检与修订由助手在这一步内部完成。",
+        "看成稿、提意见、确认成稿；意见由助手定向修订。",
         "渲染 GY-F003 Word，发布到知识库并生成回执。",
       ],
       review: [
@@ -406,6 +405,14 @@ window.__ModuleLoader__.load({
         },
         publishMarkdown: d.publish?.markdown || d.generation?.markdown || "",
         publish: { ...(d.publish || {}) },
+        draft: {
+          ready: Boolean(d.draft?.ready) || Boolean(d.draft?.markdown || d.generation?.markdown),
+          markdown: d.draft?.markdown || d.generation?.markdown || "",
+          url: d.draft?.url || "",
+          version: d.draft?.version || 1,
+          comments: d.draft?.comments || "",
+          confirmed: Boolean(d.draft?.confirmed),
+        },
         sessions: { ...(d.sessions || {}) },
         link: "",
         status: "",
@@ -545,7 +552,7 @@ window.__ModuleLoader__.load({
         const labels =
           flow === "review"
             ? { 4: "技术资料预审", 5: "预审意见与修订" }
-            : { 4: "大纲与纲要草拟", 5: "正文生成", 6: "草稿自检与修订", 7: "草稿自检与修订" };
+            : { 4: "大纲与纲要草拟", 5: "正文生成", 6: "成稿确认与修订", 7: "出稿" };
         return `${base} ${labels[stepNumber] || "技术文件起草"}`;
       };
 
@@ -1073,7 +1080,7 @@ window.__ModuleLoader__.load({
             );
           }
 
-          if (step === 5 || step === 6 || step === 7) {
+          if (step === 5) {
             const gen = form.generation || {};
             const selfcheck = form.selfcheck || {};
             const revision = form.revision || { round: 1, items: [], confirmed: false };
@@ -1179,7 +1186,7 @@ window.__ModuleLoader__.load({
                           h("a", { style: s.link, href: gen.previewUrl, target: "_blank", rel: "noreferrer" }, gen.previewUrl),
                         )
                       : null,
-                    h("div", { style: s.note }, "点「交给助手生成」会新建会话并把任务号交给助手；助手完成后用 jswj_task_update 写回 generation.status=done，并可附 generation.progress 与预览链接。"),
+                    h("div", { style: s.note }, "点「交给助手生成」会新建会话：助手逐章生成后自动自检并修订到无严重项，再把 generation.status=done 与成稿正文 draft.markdown 写回任务；回到本页刷新即可进入成稿确认。"),
                   )
                 : step === 6
                   ? h(
@@ -1280,6 +1287,8 @@ window.__ModuleLoader__.load({
 
             const revisionExtra =
               "请读取 selfcheck.items 与本轮文档，汇总为 revision.items（severity / location / problem / action）并写回任务；不要直接改正文。";
+            const generationExtra =
+              "生成后自动自检并修订，直到没有严重项；再写回 generation.status=done、selfcheck.status=clean、revision.done=true，并把成稿正文写入 draft.markdown、draft.ready=true、draft.version 加 1。";
             const selfcheckItems = selfcheck.items || [];
             const selfcheckBlockers = selfcheckItems.filter((item) => item.severity === "严重");
             const selfcheckFinished = Boolean(selfcheck.status) && selfcheck.status !== "pending";
@@ -1313,7 +1322,7 @@ window.__ModuleLoader__.load({
                 h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
                 h(
                   "button",
-                  { style: s.btnSecondary, onClick: () => handoff(step, step === 7 ? revisionExtra : undefined) },
+                  { style: s.btnSecondary, onClick: () => handoff(step, step === 5 ? generationExtra : step === 7 ? revisionExtra : undefined) },
                   sessionFor(step)
                     ? "打开本步会话"
                     : step === 5
@@ -1325,11 +1334,15 @@ window.__ModuleLoader__.load({
                 sessionFor(step)
                   ? h(
                       "button",
-                      { style: s.btnSecondary, onClick: () => handoff(step, step === 7 ? revisionExtra : undefined, true) },
+                      { style: s.btnSecondary, onClick: () => handoff(step, step === 5 ? generationExtra : step === 7 ? revisionExtra : undefined, true) },
                       "新建会话",
                     )
                   : null,
-                h("button", { style: s.btnSecondary, onClick: () => copyPrompt(step) }, "复制指令"),
+                h(
+                  "button",
+                  { style: s.btnSecondary, onClick: () => copyPrompt(step, step === 5 ? generationExtra : undefined) },
+                  "复制指令",
+                ),
                 step === 7
                   ? h(
                       "button",
@@ -1363,8 +1376,117 @@ window.__ModuleLoader__.load({
             );
           }
 
-          // step 8
+          if (step === 6) {
+            const draft = form.draft || { ready: false, markdown: "", url: "", version: 1, comments: "", confirmed: false };
+            const preview = () =>
+              run(async () => {
+                if (!draft.markdown) throw new Error("还没有成稿正文，先让助手生成成稿");
+                const result = await call("publish", {
+                  markdown: draft.markdown,
+                  title: `${form.basic.name || "技术文件"}-草稿-v${draft.version || 1}`,
+                  classification: form.basic.classification,
+                  name: `${form.basic.name || "技术文件"}-草稿-v${draft.version || 1}.docx`,
+                });
+                await call("tasks.patch", { id: task.id, patch: { data: { draft: { ...draft, url: result.url } } } });
+                setTask(await call("tasks.get", { id: task.id }));
+                setNotice("预览稿已生成，可在知识库中查看。");
+              });
+            const submitComments = () =>
+              run(async () => {
+                const comments = String(form.draft?.comments || "").trim();
+                if (!comments) throw new Error("请先写下需要修改的意见");
+                const next = { ...draft, comments, confirmed: false };
+                await call("tasks.patch", { id: task.id, patch: { data: { draft: next } } });
+                await props.startAgent(
+                  promptFor(
+                    task,
+                    6,
+                    "按 draft.comments 逐条修订成稿，只改意见指出的位置；完成后更新 draft.markdown、draft.version 加 1、draft.ready 置 true、draft.confirmed 置 false，并写回任务。",
+                  ),
+                  sessionTitleFor(6),
+                  task.id,
+                  6,
+                );
+                setTask(await call("tasks.get", { id: task.id }));
+                setNotice("已提交意见并交给助手修订；完成后刷新。");
+              });
+            const confirmDraft = () =>
+              run(async () => {
+                const next = { ...draft, confirmed: true };
+                setTask(await call("tasks.step", { id: task.id, step: 6, data: { draft: next } }));
+                setNotice("成稿已确认，进入出稿。");
+              });
+            return h(
+              "div",
+              null,
+              h(
+                "div",
+                { style: s.row },
+                h("span", { style: { color: draft.ready ? C.ok : C.warn } }, draft.ready ? "✓" : "…"),
+                h(
+                  "div",
+                  { style: s.rowMain },
+                  h("div", null, draft.ready ? `成稿已生成 · v${draft.version || 1}` : "等待助手生成成稿"),
+                  h(
+                    "div",
+                    { style: s.mono },
+                    draft.ready
+                      ? "自检与修订已在生成回合由助手自动完成，这里只看成稿、提意见"
+                      : "生成后助手会自动自检与修订，不需要逐步推进",
+                  ),
+                ),
+              ),
+              draft.url
+                ? h("div", { style: s.note }, "预览稿：", h("a", { style: s.link, href: draft.url, target: "_blank", rel: "noreferrer" }, draft.url))
+                : null,
+              draft.markdown
+                ? h(
+                    "div",
+                    { style: s.field, marginTop: 12 },
+                    h("label", { style: s.label }, "成稿预览（只读）"),
+                    h("textarea", { style: { ...s.textarea, minHeight: 200 }, readOnly: true, value: draft.markdown }),
+                  )
+                : null,
+              h(
+                "div",
+                { style: s.field, marginTop: 12 },
+                h("label", { style: s.label }, "我的意见（一行一条或整段）"),
+                h("textarea", {
+                  style: s.textarea,
+                  value: form.draft?.comments || "",
+                  placeholder: "例如：5.2 响应时间要给出依据；4.1 重量数据前后不一致",
+                  onChange: (e) => set({ draft: { ...draft, comments: e.target.value } }),
+                }),
+              ),
+              h("div", { style: s.note }, "自检和修订在生成回合内部自动完成；这里不再逐步确认。先提交意见让助手改，满意后确认成稿并出稿。"),
+              h(
+                "div",
+                { style: s.footer },
+                h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+                h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
+                draft.ready
+                  ? h("button", { style: s.btnSecondary, onClick: preview }, "生成预览稿")
+                  : h("button", { style: s.btnSecondary, onClick: () => handoff(6, "根据大纲与资料生成成稿，生成后自动自检并修订到无严重项，写回 draft.markdown、draft.ready=true、draft.version 加 1。") }, "交给助手生成成稿"),
+                draft.ready
+                  ? h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: submitComments }, "提交意见并修订")
+                  : null,
+                h(
+                  "button",
+                  {
+                    style: { ...s.btn, ...(busy || !draft.ready ? s.btnDisabled : {}) },
+                    disabled: busy || !draft.ready,
+                    onClick: confirmDraft,
+                  },
+                  "确认成稿，去出稿",
+                ),
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
+              ),
+            );
+          }
+
+          // step 7
           const markdown =
+            form.draft?.markdown ||
             form.publishMarkdown ||
             [
               `# ${form.basic.name || "技术文件"}`,

@@ -18,8 +18,7 @@ export const DRAFT_STEPS = [
   "参考资料",
   "大纲与纲要",
   "生成",
-  "自检",
-  "修订",
+  "成稿确认",
   "出稿",
 ];
 
@@ -76,9 +75,8 @@ function inferMaxStep(task) {
     if (d.review?.file?.ok) n = Math.max(n, 3);
     if (d.review?.checklist) n = Math.max(n, 2);
   } else {
-    if (d.publish?.url) n = Math.max(n, 8);
-    if ((d.revision?.items ?? []).length || d.revision?.confirmed) n = Math.max(n, 7);
-    if (d.selfcheck?.status && d.selfcheck.status !== "pending") n = Math.max(n, 6);
+    if (d.publish?.url) n = Math.max(n, 7);
+    if (d.draft?.ready) n = Math.max(n, 6);
     if (d.generation?.status === "done") n = Math.max(n, 5);
     if ((d.outline?.chapters ?? []).length) n = Math.max(n, 4);
     if ((d.sources ?? []).length) n = Math.max(n, 3);
@@ -88,6 +86,13 @@ function inferMaxStep(task) {
 }
 
 function normalize(task) {
+  // 旧版起草流是 8 步（自检/修订独立），迁移到 7 步：6/7 -> 成稿确认，8 -> 出稿。
+  if (task.flow === "draft" && task.stepsVersion !== 2) {
+    const map = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 6, 8: 7 };
+    task.step = map[task.step] ?? Math.min(Number(task.step) || 1, 7);
+    task.maxStep = map[task.maxStep ?? task.step] ?? Math.min(Number(task.maxStep ?? task.step) || 1, 7);
+    task.stepsVersion = 2;
+  }
   if (!task.maxStep) task.maxStep = inferMaxStep(task);
   return task;
 }
@@ -118,7 +123,7 @@ function isPending(task) {
     return reached >= 4 && issues.some((item) => !item.decision);
   }
   if (task.flow === "draft") {
-    return reached === 6 && (d.selfcheck?.items ?? []).length > 0;
+    return reached === 6 && d.draft?.ready === true && d.draft?.confirmed !== true;
   }
   return false;
 }
@@ -155,6 +160,7 @@ export async function createTask(flow) {
     flow,
     step: 1,
     maxStep: 1,
+    stepsVersion: flow === "draft" ? 2 : undefined,
     status: "active",
     createdAt: stamp(),
     updatedAt: stamp(),
@@ -166,6 +172,7 @@ export async function createTask(flow) {
       generation: { status: "idle", note: "" },
       selfcheck: { status: "pending", items: [] },
       revision: { round: 1, items: [], confirmed: false, done: false, executedAt: "" },
+      draft: { ready: false, markdown: "", url: "", version: 1, comments: "", confirmed: false, updatedAt: "" },
       publish: {},
       sessions: {},
       review: {
@@ -233,17 +240,10 @@ export function evaluateGate(flow, step, task) {
     }
     if (step === 5) need(d.generation?.status === "done", "G5：生成尚未完成");
     if (step === 6) {
-      // 自检只诊断，不在这里修；查出问题也允许进入第 7 步修订。
-      need(d.selfcheck?.status && d.selfcheck.status !== "pending", "G6：自检尚未完成");
+      need(d.draft?.ready === true, "G6：成稿尚未生成");
+      need(d.draft?.confirmed === true, "G6：请先确认成稿再出稿");
     }
-    if (step === 7) {
-      const items = d.selfcheck?.items ?? [];
-      const blockers = items.filter((item) => item.severity === "严重");
-      need((d.revision?.round ?? 1) <= 3 || d.revision?.overrunConfirmed, "G7：超过三轮须显式确认继续");
-      need(d.revision?.done === true, "G7：修订尚未执行完成，等助手写回后再出稿");
-      need(blockers.length === 0, `G7：自检仍有 ${blockers.length} 条必须处理项，修订完成后再出稿`);
-    }
-    if (step === 8) need(String(d.publish?.url ?? "").trim(), "G8：文件尚未出稿");
+    if (step === 7) need(String(d.publish?.url ?? "").trim(), "G7：文件尚未出稿");
     return;
   }
 

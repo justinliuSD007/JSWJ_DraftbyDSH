@@ -5,7 +5,7 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 # 技术文件起草（JSWJ_DraftbyDSH）
 
-技术文件起草（JSWJ_DraftbyDSH），以下简称本插件。两条业务流共用一个知识空间：业务流 1 创建技术文档（8 步），业务流 2 技术资料 AI 预审（5 步）。
+技术文件起草（JSWJ_DraftbyDSH），以下简称本插件。两条业务流共用一个知识空间：业务流 1 创建技术文档（7 步），业务流 2 技术资料 AI 预审（5 步）。
 每一步先满足门禁再进入下一步，不得跳步。出稿一律走「渲染 Word → 发布知识库」，不得用纯文本冒充正式文件。
 
 ## 前置检查
@@ -42,18 +42,17 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 | 步骤 | 写回 |
 |---|---|
-| ⑤ 生成 | `{"data":{"generation":{"status":"done","note":"8 章已生成","markdown":"# 标题\n..."}}}` |
-| ⑥ 自检 | `{"data":{"selfcheck":{"status":"clean","items":[]}}}`；有问题则 `status:"blocked"`，`items:[{severity:"严重"或"建议",location,problem,basis}]` |
-| ⑦ 修订 | `{"data":{"revision":{"round":1,"items":[{severity,location,problem,action}]}}}`（`confirmed` 由用户在页面勾选） |
+| ⑤ 生成 | `{"data":{"generation":{"status":"done","note":"..."},"draft":{"markdown":"# 标题\n...","ready":true,"version":1,"confirmed":false}}}`；自检与修订在同一回合内完成 |
+| ⑥ 成稿确认 | 按 `draft.comments` 定向修订后写回 `draft.markdown`、`draft.version` 加 1、`draft.ready` true、`draft.confirmed` false |
 | ④ 预审 | `{"data":{"review":{"issues":[{severity:"严重"或"建议",location,problem,basis,suggestion}]}}}` |
 
 任务文件在 `~/.dsh/jswj-tasks/<任务号>.json`，不要手工改；只通过工具读写。
 
 页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
 
-第 6 步自检：只做检查并把 `selfcheck.status` 与 `items` 写回任务，不在这一步修改正文。
+生成：逐章生成正文后，在同一回合内自动自检并修订到没有严重项，再把 `generation.status=done`、成稿正文 `draft.markdown`、`draft.ready=true`、`draft.version` 写回任务。不要让用户逐步确认自检与修订。
 
-第 7 步修订：把 `selfcheck.items` 汇总为 `revision.items`，按条目逐条修改正文，只改指定位置，不整体润色、不补写整节；完成后把 `selfcheck` 置为待检查、`revision.round` 加 1、`revision.done` 置 true、`revision.executedAt` 写当前时间、`revision.confirmed` 置 false，并写回任务。用户回第 6 步重新自检。
+成稿确认：用户把意见写在 `draft.comments`。按意见逐条定向修改，只改意见指出的位置，不整体润色、不补写整节；完成后 `draft.version` 加 1、`draft.ready=true`、`draft.confirmed=false`，并写回任务。
 
 ## 知识库落位
 
@@ -84,9 +83,8 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 | ③ 参考资料 | 接收飞书云文档链接或上传件，逐份复述解析结果 | 至少一份解析成功；失败项剔除 |
 | ④ 大纲与纲要 | 依据资料与模板出完整大纲（到三、四级）；只就一、二级确认要点 | 覆盖模板必备章节；要点齐备或标注「由 AI 拟稿」 |
 | ⑤ 生成 | 逐章生成正文；表格结构化；图形有数据才画 | 全部章节完成 |
-| ⑥ 自检 | 内容、格式、其他三类检查 | 无阻断项 |
-| ⑦ 修订 | 先汇总本轮修订要点并请用户确认，再定向修订，回到 ⑥ | 至多三轮；超轮须用户确认继续 |
-| ⑧ 出稿 | `jswj_render_docx` 出 Word → `jswj_publish_docx` 发布到目标目录 | 文件已落位，节点回执与链接已给出 |
+| ⑥ 成稿确认 | 看成稿、提意见；助手按意见定向修订 | 成稿已生成且确认 |
+| ⑦ 出稿 | `jswj_render_docx` 出 Word → `jswj_publish_docx` 发布到目标目录 | 文件已落位，节点回执与链接已给出 |
 
 补充约束：
 
@@ -144,7 +142,7 @@ Markdown 结构决定 Word 结构：
 | 上传 `1069913` | 文件 token 过期，重新发布 |
 | Python 不可用 | 报告 `pythonPath` 与错误信息，请用户配置运行时 |
 | 模板「结构不符」 | 说明 GY-F003 模板版本变化，停止出稿，不要改成无模板裸文档 |
-| 三轮修订仍有严重问题 | 列出未解决项与原因（资料不足 / 模板不适配 / 内容冲突），询问是否继续 |
+| 多轮意见后仍有严重问题 | 列出未解决项与原因（资料不足 / 模板不适配 / 内容冲突），询问是否继续 |
 
 ## 输出要求
 

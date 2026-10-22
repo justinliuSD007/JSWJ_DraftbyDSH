@@ -5,7 +5,7 @@
 ## 能力
 
 - **使用指南**：https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb
-- **分步任务向导**：起草 D1–D8、预审 R1–R5，每步一个决策，门禁不过不能推进。
+- **分步任务向导**：起草 D1–D7、预审 R1–R5，每步一个决策，门禁不过不能推进。
 - **任务中心**：按待处理 / 进行中 / 已完成分组；预审意见逐条采纳、驳回或改写后才能存档。
 - **环境自检**：任务列表检查 HarmonyOS Sans SC，缺失时一键安装（字体文件不随插件分发）。
 - **资料留存**：D3 支持链接解析与 docx / md 上传，上传件自动归档到知识库 `资料库/{层级}/{板块}/`。
@@ -13,7 +13,7 @@
 - 知识库读写：列节点、读正文、建节点、追加段落。
 - Word 出稿：Markdown → 套用 GY-F003 模板的 `.docx`，封面、页眉、章节、表格自动处理。
 - 发布：`.docx` 上传后作为文件节点移入知识库，返回节点链接。
-- 生成 / 自检 / 预审 / 修订交给助手执行，助手用任务工具写回结果，页面继续推进。
+- 生成与预审交给助手执行；生成的回合内自动完成自检与修订，页面只留成稿确认与出稿。
 
 ## 仓库结构
 
@@ -21,7 +21,7 @@
 plugin/                      DSH bundle
 ├── lib/index.js             9 个工具 + /api/jswj 页面数据通道
 ├── lib/tasks.js             任务存储与门禁
-├── lib/client.js            D1–D8 / R1–R5 分步向导
+├── lib/client.js            D1–D7 / R1–R5 分步向导
 ├── python/render_docx.py    Markdown → GY-F003 Word
 ├── template/                清理版模板
 ├── cordis.patch.yml         插入 jswj-draft 条目（不含凭据）
@@ -74,13 +74,13 @@ skills/jswj-draftbydsh/      Skill：业务流、门禁、出稿规范、任务�
 | `jswj_render_docx` | Markdown → GY-F003 Word |
 | `jswj_publish_docx` | 上传并移入知识库 |
 | `jswj_task_get` | 读取任务状态 |
-| `jswj_task_update` | 写回生成 / 自检 / 预审 / 修订结果 |
+| `jswj_task_update` | 写回生成 / 预审 / 成稿修订结果 |
 
 ## 验证状态
 
 - `node --check` 入口通过；11 个文件语法检查通过。
 - 页面数据通道 `POST /api/jswj` 实测：任务创建、门禁拒绝、逐步推进、发布、清理全部通过。
-- 起草 D1–D8 与预审 R1–R5 通过接口完整跑通，出稿节点生成后已删除。
+- 起草 D1–D7 与预审 R1–R5 通过接口完整跑通，出稿节点生成后已删除。
 - 插件工具通道调用 `jswj_ping` 成功，凭据由 profile 覆盖层生效。
 - 页面按钮的真实点击链路尚未在浏览器中自动化验证。
 
