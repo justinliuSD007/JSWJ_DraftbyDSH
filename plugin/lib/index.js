@@ -217,9 +217,13 @@ async function handleJswjRequest(req, res, { ctx, webServer }) {
       return;
     }
     const origin = webServer.getOrigin();
-    if (req.headers.origin && req.headers.origin !== origin) {
-      sendJson(res, 403, { ok: false, error: "跨源请求被拒绝" });
-      return;
+    const reqOrigin = req.headers.origin;
+    if (reqOrigin) {
+      const sameHost = reqOrigin === origin || reqOrigin.replace("://localhost", "://127.0.0.1") === origin;
+      if (!sameHost) {
+        sendJson(res, 403, { ok: false, error: "跨源请求被拒绝" });
+        return;
+      }
     }
 
     const body = JSON.parse(await readJsonBody(req));
