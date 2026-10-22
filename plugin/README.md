@@ -43,7 +43,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-plugin.ps1
 plugin_manager action=install_bundle target=<本目录绝对路径>
 ```
 
-Skill 已随包放在 `skills/jswj-draftbydsh/`，安装后自动加载；未识别时手工复制到 `~/.dsh/skills/`。
+Skill 已随包放在 `skills/jswj-draftbydsh/`，插件启动时会自动写入 `~/.dsh/skills/`，不需要手工加载；个别环境未识别时再手工复制一次并重载。
 
 条目 id 为 `jswj-draft`，页面挂载在 `main`（key 同 id）与 `sidebar.panellist`（显示名「技术文件起草」）。
 
