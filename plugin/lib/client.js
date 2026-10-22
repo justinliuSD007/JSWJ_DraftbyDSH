@@ -974,11 +974,12 @@ window.__ModuleLoader__.load({
                       textPath: uploaded.textPath,
                       nodeToken: uploaded.nodeToken,
                       images: uploaded.images || [],
+                      deduped: Boolean(uploaded.deduped),
                       mode: "structure",
                     },
                   ],
                 });
-                setNotice(`已上传并留存到资料库：${uploaded.title}`);
+                setNotice(uploaded.deduped ? `资料库已有相同文件，已复用：${uploaded.title}` : `已上传并留存到资料库：${uploaded.title}`);
               });
               event.target.value = "";
             };
@@ -1030,9 +1031,13 @@ window.__ModuleLoader__.load({
                             "div",
                             { style: s.mono },
                             item.ok
-                              ? `已解析 · ${item.chars} 字${item.kind === "upload" ? " · 已留存资料库" : ""}${
-                                  item.images?.length ? ` · ${item.images.length} 张图` : ""
-                                }`
+                              ? `已解析 · ${item.chars} 字${
+                                  item.kind === "upload"
+                                    ? item.deduped
+                                      ? " · 资料库已有相同文件"
+                                      : " · 已留存资料库"
+                                    : ""
+                                }${item.images?.length ? ` · ${item.images.length} 张图` : ""}`
                               : `解析失败：${item.error || ""}`,
                           ),
                           h(

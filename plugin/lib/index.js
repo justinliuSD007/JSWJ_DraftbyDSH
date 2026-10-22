@@ -27,6 +27,7 @@ const { stat, mkdir, writeFile, unlink, readFile, readdir, copyFile, rm } = awai
 const { execFile } = await import("node:child_process");
 const { promisify } = await import("node:util");
 const { fileURLToPath } = await import("node:url");
+const { createHash } = await import("node:crypto");
 const { join, basename, isAbsolute, extname, dirname, resolve, sep } = await import("node:path");
 const { homedir, tmpdir } = await import("node:os");
 
@@ -353,8 +354,20 @@ async function ensureWikiChild(cfg, parent, title) {
   return token;
 }
 
-async function uploadFileToWiki(cfg, filePath, parent, name) {
-  const info = await stat(filePath);
+function bufferHash(buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+async function downloadDriveFile(cfg, fileToken) {
+  const token = await getToken(cfg);
+  const res = await fetch(`${API}/drive/v1/files/${encodeURIComponent(fileToken)}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) fail(`读取资料库已有文件失败：HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+async function uploadFileToWiki(cfg, filePath, parent, name) {  const info = await stat(filePath);
   if (info.size === 0) fail("文件为空，无法上传。");
   if (info.size > MAX_UPLOAD_BYTES) fail(`文件 ${(info.size / 1024 / 1024).toFixed(1)} MB，超过飞书 20 MB 上限。`);
   const buffer = await readFile(filePath);
@@ -718,7 +731,32 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           const library = await ensureWikiChild(cfg, cfg.rootToken || "", "资料库");
           const tierNode = await ensureWikiChild(cfg, library, String(body.tier || "未分级"));
           const boardNode = await ensureWikiChild(cfg, tierNode, String(body.board || "未分类"));
-          const published = await uploadFileToWiki(cfg, tmp, boardNode, name);
+
+          const space = spaceRoot(cfg);
+          const siblings = await api(
+            cfg,
+            `/wiki/v2/spaces/${space}/nodes?parent_node_token=${encodeURIComponent(boardNode)}&page_size=50`,
+          );
+          const existing = (siblings.items ?? []).find((item) => item.title === name);
+          let deduped = false;
+          let published = null;
+          if (existing) {
+            const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(existing.node_token)}`);
+            const obj = node?.node?.obj_token;
+            if (obj) {
+              const oldBuffer = await downloadDriveFile(cfg, obj);
+              if (bufferHash(oldBuffer) === bufferHash(buffer)) {
+                deduped = true;
+                published = {
+                  url: `https://govy.feishu.cn/wiki/${existing.node_token}`,
+                  wikiToken: existing.node_token,
+                };
+              } else {
+                throw new Error(`资料库已有同名文件「${name}」且内容不同，请改名后重试`);
+              }
+            }
+          }
+          if (!published) published = await uploadFileToWiki(cfg, tmp, boardNode, name);
 
           value = {
             ok: true,
@@ -730,6 +768,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             url: published.url,
             nodeToken: published.wikiToken,
             library: "资料库",
+            deduped,
           };
         } finally {
           await unlink(tmp).catch(() => {});
