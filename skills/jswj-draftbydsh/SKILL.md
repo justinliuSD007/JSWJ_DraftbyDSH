@@ -53,6 +53,8 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 第 7 步修订：按任务里的 `revision.items` 逐条修改正文，只改指定位置，不整体润色、不补写整节；完成后把 `selfcheck` 置为待检查、`revision.round` 加 1、`revision.confirmed` 置 false，并写回任务。用户回第 6 步重新自检。
 
+第 6 步自检处理：页面要求「交给助手处理问题」时，按 `selfcheck.items` 逐条修正正文，只改问题指出的位置；修正后重新自检，把 `selfcheck.status`（clean / blocked）与仍存在的问题写回任务。仍有必须处理项时保留 blocked 并写明原因。
+
 ## 知识库落位
 
 当前知识空间根级只有三份 docx：

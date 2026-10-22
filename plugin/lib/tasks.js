@@ -233,7 +233,11 @@ export function evaluateGate(flow, step, task) {
     }
     if (step === 5) need(d.generation?.status === "done", "G5：生成尚未完成");
     if (step === 6) {
-      need(d.selfcheck?.status === "clean" || d.selfcheck?.status === "waived", "G6：自检仍有阻断项");
+      const items = d.selfcheck?.items ?? [];
+      const blockers = items.filter((item) => item.severity === "严重");
+      const finished = d.selfcheck?.status && d.selfcheck.status !== "pending";
+      need(finished, "G6：自检尚未完成");
+      need(d.selfcheck?.status === "clean" || blockers.length === 0, `G6：自检仍有 ${blockers.length} 条必须处理项`);
     }
     if (step === 7) {
       need((d.revision?.round ?? 1) <= 3 || d.revision?.overrunConfirmed, "G7：超过三轮须显式确认继续");
