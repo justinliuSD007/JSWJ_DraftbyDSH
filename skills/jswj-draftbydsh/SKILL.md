@@ -52,8 +52,6 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
 
-`sources[]` 里 `manual:true` 的是 Polarion / 内网链接，只有 URL，没有正文；不要假装已读，需要时请用户补充关键段落或上传文件。
-
 生成：逐章生成正文后，在同一回合内自动自检并修订到没有严重项，再把 `generation.status=done`、成稿正文 `draft.markdown`、`draft.ready=true`、`draft.version` 写回任务。不要让用户逐步确认自检与修订。
 
 成稿确认：用户把意见写在 `draft.comments`。按意见逐条定向修改，只改意见指出的位置，不整体润色、不补写整节；完成后 `draft.version` 加 1、`draft.ready=true`、`draft.confirmed=false`，并写回任务。

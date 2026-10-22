@@ -223,7 +223,7 @@ export function evaluateGate(flow, step, task) {
       need(String(d.attrs?.tier ?? "").trim(), "G2：请选择层级");
       need(String(d.attrs?.board ?? "").trim(), "G2：请选择板块");
       need(String(d.attrs?.archive ?? "").trim(), "G2：请选择归档位置");
-      if (d.attrs.archive === "polarion") need(String(d.attrs.project ?? "").trim(), "G2：归档到 Polarion 时必须填写项目名称");
+      if (d.attrs.archive === "polarion") need(String(d.attrs.project ?? "").trim(), "G2：归档到 Polarion 时必须填写项目空间");
     }
     if (step === 3) {
       const ok = (d.sources ?? []).filter((s) => s && s.ok);

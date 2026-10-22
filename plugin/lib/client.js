@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
       draft: [
         "填文件名称、选类型与密级；名称做重名检测，编号可空。",
         "选层级、板块与归档位置，目录由属性推导。",
-        "粘贴飞书链接、Polarion / 内网链接或上传原件；飞书自动解析，Polarion 只登记。",
+        "粘贴云文档链接或上传原件，至少一份解析成功才能继续。",
         "确认大纲，补一、二级要点；三级以下可留空。",
         "逐章生成，自检与修订由助手在这一步内部完成。",
         "看成稿、提意见、确认成稿；意见由助手定向修订。",
@@ -841,9 +841,9 @@ window.__ModuleLoader__.load({
                 ),
                 form.attrs.archive === "polarion"
                   ? h("div", { style: s.field },
-                      h("label", { style: s.label }, "Polarion 项目名称"),
+                      h("label", { style: s.label }, "Polarion 项目空间"),
                       h("input", { style: s.input, value: form.attrs.project || "", placeholder: "例如：GAC_A6_T0", onChange: setAttrs("project") }),
-                      h("span", { style: s.mono }, "填 Polarion 的项目名称"),
+                      h("span", { style: s.mono }, "填需要归档到的 Polarion 项目空间（名称即可）"),
                     )
                   : null,
               ),
@@ -870,25 +870,9 @@ window.__ModuleLoader__.load({
             const parse = () =>
               run(async () => {
                 const link = String(form.link || "").trim();
-                if (!link) throw new Error("请先粘贴参考资料链接");
-                const isFeishu = /feishu\.cn|larksuite\.com/i.test(link);
-                if (!isFeishu) {
-                  let title = link;
-                  try {
-                    const matched = link.match(/\/project\/([^/]+)\/wiki\/([^/?#]+)/i);
-                    title = matched ? `Polarion: ${matched[1]} / ${matched[2]}` : `外部链接：${new URL(link).host}`;
-                  } catch {
-                    /* 保留原始链接作为标题 */
-                  }
-                  set({
-                    sources: [
-                      ...form.sources.filter((x) => x.url !== link),
-                      { url: link, title, ok: true, manual: true, chars: 0, note: "内网/外部链接，仅登记，未解析正文" },
-                    ],
-                    link: "",
-                  });
-                  setNotice("已登记外部链接；内网链接不解析正文，需要时请补充关键段落或上传文件。");
-                  return;
+                if (!link) throw new Error("请先粘贴飞书云文档链接");
+                if (!/feishu\.cn|larksuite\.com/i.test(link)) {
+                  throw new Error("目前只解析飞书云文档链接；Polarion 只在 D2 记录归档项目空间，不在资料里解析。");
                 }
                 const doc = await call("doc.read", { target: link });
                 set({
@@ -936,7 +920,7 @@ window.__ModuleLoader__.load({
               h(
                 "div",
                 { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
-                h("input", { style: { ...s.input, flex: "1 1 300px" }, value: form.link || "", placeholder: "粘贴飞书云文档链接，或 Polarion / 内网链接", onChange: (e) => set({ link: e.target.value }) }),
+                h("input", { style: { ...s.input, flex: "1 1 300px" }, value: form.link || "", placeholder: "粘贴飞书云文档链接，回车或点「解析」", onChange: (e) => set({ link: e.target.value }) }),
                 h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: parse }, "解析"),
                 h(
                   "label",
@@ -956,7 +940,7 @@ window.__ModuleLoader__.load({
               ),
               h("div", { style: { ...s.list, marginTop: 12 } },
                 form.sources.length === 0
-                  ? h("div", { style: s.note }, "还没有参考资料。飞书云文档链接会自动解析；Polarion / 内网链接只登记、不解析正文；也可上传 docx / md，上传件会留存到 资料库/{层级}/{板块}/。")
+                  ? h("div", { style: s.note }, "还没有参考资料。粘贴飞书云文档链接，或上传 docx / md；上传的文件会解析并留存到 资料库/{层级}/{板块}/。")
                   : form.sources.map((item, i) =>
                       h(
                         "div",
@@ -970,9 +954,7 @@ window.__ModuleLoader__.load({
                             "div",
                             { style: s.mono },
                             item.ok
-                              ? item.manual
-                                ? "已登记 · 内网/外部链接（未解析正文）"
-                                : `已解析 · ${item.chars} 字${item.kind === "upload" ? " · 已留存资料库" : ""}`
+                              ? `已解析 · ${item.chars} 字${item.kind === "upload" ? " · 已留存资料库" : ""}`
                               : `解析失败：${item.error || ""}`,
                           ),
                         ),
