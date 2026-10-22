@@ -1260,6 +1260,7 @@ async function healthCheck(cfg) {
     issues.push("GY-F003 模板缺失");
   }
 
+  await ensureBundledSkill();
   try {
     checks.skill = (await stat(join(homedir(), ".dsh", "skills", "jswj-draftbydsh", "SKILL.md"))).isFile();
     if (!checks.skill) warnings.push("Skill 尚未写入本机技能目录，重载 DSH 后会自动安装");
