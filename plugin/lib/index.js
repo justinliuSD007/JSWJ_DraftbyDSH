@@ -967,15 +967,74 @@ async function cleanupTaskArtifacts(cfg, ctx, task) {
   }
 
   const registry = ctx.get("workspaceRegistry");
+  const archived = new Set();
   if (registry) {
     for (const entry of Object.values(task.data?.sessions ?? {})) {
       const sessionId = entry && entry.sessionId;
       if (!sessionId) continue;
       try {
         await registry.archiveSession(sessionId, { stopActivity: true });
+        archived.add(sessionId);
         result.sessions += 1;
       } catch {
         /* 单个会话归档失败不阻塞删除 */
+      }
+    }
+
+    // 兜底：旧任务可能没记录 sessionId，按「文件名 + 步骤名」匹配会话标题。
+    const base = String(task.data?.basic?.name || task.data?.review?.file?.title || "").trim();
+    if (base) {
+      const labels = [
+        "大纲与纲要草拟",
+        "正文生成",
+        "成稿确认与修订",
+        "草稿自检与修订",
+        "出稿",
+        "技术资料预审",
+        "预审意见与修订",
+      ];
+      const controller = ctx.get("sessionController");
+      if (controller) {
+        try {
+          const list = await controller.list({}, AbortSignal.timeout(5000));
+          for (const item of list.items ?? []) {
+            if (archived.has(item.sessionId)) continue;
+            const title = item.projections?.values?.title;
+            if (typeof title !== "string") continue;
+            if (!title.startsWith(base) || !labels.some((label) => title.endsWith(label))) continue;
+            await registry.archiveSession(item.sessionId, { stopActivity: true });
+            archived.add(item.sessionId);
+            result.sessions += 1;
+          }
+        } catch {
+          /* 会话列表不可读时继续用缓存兜底 */
+        }
+      }
+
+      const cacheDir = join(homedir(), ".dsh", "storages", "session_projcache", "sessions");
+      const files = await readdir(cacheDir).catch(() => []);
+      for (const file of files) {
+        if (!file.endsWith(".json")) continue;
+        const sessionId = file.replace(/\.json$/, "");
+        if (archived.has(sessionId)) continue;
+        try {
+          const raw = await readFile(join(cacheDir, file), "utf8");
+          let matched = raw.includes(`JSWJ 任务 ${task.id}`);
+          if (!matched && base) {
+            const record = JSON.parse(raw);
+            const title = record?.record?.rows?.title?.val;
+            matched =
+              typeof title === "string" &&
+              title.startsWith(base) &&
+              labels.some((label) => title.endsWith(label));
+          }
+          if (!matched) continue;
+          await registry.archiveSession(sessionId, { stopActivity: true });
+          archived.add(sessionId);
+          result.sessions += 1;
+        } catch {
+          /* 单个缓存不可读时跳过 */
+        }
       }
     }
   }
