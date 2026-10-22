@@ -46,9 +46,9 @@
 - appId / appSecret：填飞书应用「GO秘」的详细信息。
 - spaceId、draftRootToken、wikiBaseUrl、wikiHomeUrl、summaryWikiToken：当前知识库已统一配置，通常无需修改。
 - pythonPath / outputDir：留空即可。
-- githubToken：可选，只有「检查更新」需要；私有仓库需填一个只读 GitHub 令牌。
+- githubToken：不需要，仓库已公开，检查更新直接读取 GitHub release。
 
-安全要求：appSecret 和 githubToken 只放在本机 profile 配置里，不要写进安装包、仓库或聊天记录。
+安全要求：appSecret 只放在本机 profile 配置里，不要写进安装包、仓库或聊天记录。
 
 ## 五、Skill
 
@@ -84,7 +84,7 @@
 - 有更新时，可以点「下载更新包」，更新包会下载到 ~/.dsh/jswj-updates。
 - 下载后，用 DSH 插件管理把新包覆盖安装到原目录，再重载 DSH，任务数据不受影响。
 
-私有仓库需要配置 githubToken；没有配置时，检查更新会提示无法访问 GitHub，不影响起草和出稿。
+仓库是公开的，检查更新不需要配置令牌；网络无法访问 GitHub 时会提示失败，不影响起草和出稿。
 
 ## 九、常见问题
 
@@ -94,7 +94,7 @@
 - 页面提示字体缺失：安装 HarmonyOS Sans SC；字体有授权限制，不随安装包分发。
 - 出稿库没有文件：确认第 2 步归档位置选的是飞书审批或 Polarion。
 - 任务总结没有写入多维表格：检查 summaryWikiToken 配置。
-- 检查更新提示无法访问 GitHub：配置 githubToken，或直接打开仓库 release 页面下载。
+- 检查更新提示无法访问 GitHub：检查网络，或直接打开仓库 release 页面下载。
 
 ## 十、升级与卸载
 
