@@ -70,7 +70,11 @@ window.__ModuleLoader__.load({
 
     const s = {
       page: {
-        minHeight: "100%",
+        height: "100%",
+        minHeight: 0,
+        overflowY: "auto",
+        overflowX: "hidden",
+        WebkitOverflowScrolling: "touch",
         background: C.base,
         color: C.text,
         padding: "32px 28px 56px",
