@@ -29,6 +29,8 @@ window.__ModuleLoader__.load({
       err: "var(--dsw-alias-state-error-primary, #d54941)",
     };
     const MONO = "ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace";
+    // 主按钮固定品牌蓝：部分主题里 --dsw-alias-brand-primary 是白色，不能作为填充色。
+    const PRIMARY = "#2468d8";
 
     const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "自检", "修订", "出稿"];
     const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
@@ -101,8 +103,8 @@ window.__ModuleLoader__.load({
         height: 34,
         padding: "0 16px",
         borderRadius: 8,
-        border: "none",
-        background: C.brand,
+        border: `1px solid ${PRIMARY}`,
+        background: PRIMARY,
         color: "#fff",
         fontSize: 13,
         fontWeight: 550,
@@ -1305,7 +1307,7 @@ window.__ModuleLoader__.load({
                       key,
                       style: {
                         ...s.btnSecondary,
-                        background: it.decision === key ? C.brand : "transparent",
+                        background: it.decision === key ? PRIMARY : "transparent",
                         color: it.decision === key ? "#fff" : C.text,
                       },
                       onClick: () => setIssue(i, { decision: key }),
