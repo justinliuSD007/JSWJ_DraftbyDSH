@@ -48,7 +48,10 @@ plugin_manager action=install_bundle target=<本目录绝对路径>
     draftRootToken: "K3NpwxFzribxgOkzFxaczeH7nXf"
     pythonPath: ""
     outputDir: ""
+    fontDir: ""
 ```
+
+`fontDir` 留空时自动查找桌面「鸿蒙字体（对外仅可用该字体）」；字体文件不随插件分发。
 
 也支持环境变量 `JSWJ_APP_ID`、`JSWJ_APP_SECRET`、`JSWJ_SPACE_ID`、`JSWJ_ROOT_TOKEN`、
 `JSWJ_DRAFT_ROOT_TOKEN`、`JSWJ_PYTHON`。
@@ -56,6 +59,7 @@ plugin_manager action=install_bundle target=<本目录绝对路径>
 ## 页面：分步任务向导
 
 - **任务列表**：按待处理 / 进行中 / 已完成分组；新建入口按「创建技术资料 / 评审技术资料 × 技术文件」组织。
+- **环境条**：检查 HarmonyOS Sans SC，缺失时点「安装字体」复制 6 个字重到用户字体目录并写注册表，重启 DSH 生效；字体文件不随包分发。
 - **起草 D1–D8**：基本信息 → 文档属性 → 参考资料 → 大纲与纲要 → 生成 → 自检 → 修订 → 出稿。
 - **预审 R1–R5**：确认开始 → 类型与评审单 → 文件与资料 → 预审 → 意见与修订；意见逐条采纳 / 驳回 / 改写，全部处置后才能存档。
 - 每步一个决策，门禁不过不能推进；左侧步骤栏显示已完成 / 当前 / 未开始。

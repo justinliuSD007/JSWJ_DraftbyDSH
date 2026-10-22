@@ -147,6 +147,32 @@ window.__ModuleLoader__.load({
       entryGroup: { border: `1px solid ${C.line}`, background: C.layer1, borderRadius: 12, padding: "14px 16px" },
       entryTitle: { fontSize: 12, color: C.sub, marginBottom: 10 },
       entryRow: { display: "flex", gap: 8, flexWrap: "wrap" },
+      envBar: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        border: `1px solid ${C.line}`,
+        background: C.layer1,
+        borderRadius: 10,
+        padding: "10px 14px",
+        margin: "14px 0 4px",
+        fontSize: 12.5,
+        color: C.sub,
+      },
+      envLabel: { color: C.text, fontWeight: 550 },
+      envHint: { color: C.sub, fontSize: 12, lineHeight: 1.6 },
+      btnSmall: {
+        height: 28,
+        padding: "0 10px",
+        borderRadius: 6,
+        border: `1px solid ${PRIMARY}`,
+        background: PRIMARY,
+        color: "#fff",
+        fontSize: 12,
+        fontFamily: "inherit",
+        cursor: "pointer",
+      },
       groupTitle: {
         display: "flex",
         alignItems: "baseline",
@@ -379,6 +405,7 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false);
       const [error, setError] = React.useState("");
       const [notice, setNotice] = React.useState("");
+      const [font, setFont] = React.useState({ loading: true });
 
       const loadTasks = async () => {
         try {
@@ -390,6 +417,9 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => {
         loadTasks();
+        call("font.status")
+          .then((status) => setFont({ ...status, loading: false }))
+          .catch(() => setFont({ loading: false, installed: false, sourceAvailable: false }));
       }, []);
 
       React.useEffect(() => {
@@ -456,6 +486,14 @@ window.__ModuleLoader__.load({
         });
       };
 
+      const installFont = async () => {
+        await run(async () => {
+          const result = await call("font.install");
+          setFont({ ...result, loading: false, sourceAvailable: true });
+          setNotice(result.restartRequired ? "字体已安装，请重启 DSH 后生效。" : "字体已安装。");
+        });
+      };
+
       if (screen === "list" || !task || !form) {
         const groups = [
           ["待处理", tasks.filter((item) => item.pending)],
@@ -509,6 +547,27 @@ window.__ModuleLoader__.load({
                 ),
               ),
             ),
+            h(
+              "div",
+              { style: s.envBar },
+              h("span", { style: s.envLabel }, "字体 HarmonyOS Sans SC"),
+              font.loading
+                ? h("span", null, "检查中…")
+                : font.installed
+                  ? h("span", { style: { color: C.ok } }, "已安装")
+                  : h("span", { style: { color: C.warn } }, font.supported === false ? "需手动安装" : "未安装"),
+              !font.loading && !font.installed && font.supported !== false
+                ? h("button", { style: s.btnSmall, disabled: busy, onClick: installFont }, "安装字体")
+                : null,
+              !font.loading && !font.installed && font.supported === false
+                ? h("span", { style: s.envHint }, "macOS 请双击 ttf 安装到字体册")
+                : null,
+              !font.loading && !font.installed && font.sourceAvailable === false
+                ? h("span", { style: s.envHint }, "未找到字体目录，可把 ttf 放到桌面「鸿蒙字体（对外仅可用该字体）」")
+                : null,
+              font.restartRequired ? h("span", { style: s.envHint }, "重启 DSH 后生效") : null,
+            ),
+            notice ? h("div", { style: { color: C.ok, fontSize: 12.5, marginBottom: 8 } }, notice) : null,
             tasks.length === 0
               ? h("div", { style: s.note }, "还没有任务。从上方选择「创建技术资料 → 技术文件」开始。")
               : groups.map(([label, items]) =>

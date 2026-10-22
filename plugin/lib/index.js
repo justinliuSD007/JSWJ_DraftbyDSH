@@ -23,7 +23,7 @@ try {
   defineTool = (spec) => spec;
 }
 
-const { stat, mkdir, writeFile, unlink, readFile } = await import("node:fs/promises");
+const { stat, mkdir, writeFile, unlink, readFile, readdir, copyFile } = await import("node:fs/promises");
 const { execFile } = await import("node:child_process");
 const { promisify } = await import("node:util");
 const { fileURLToPath } = await import("node:url");
@@ -206,7 +206,110 @@ function sendJson(res, status, payload) {
  * 页面唯一的数据入口：任务读写、门禁推进、文档解析、发布。
  * 只接受同源页面发起的 POST，并要求 x-jswj 头，避免其它本地页面顺手调用。
  */
-async function handleJswjRequest(req, res, { ctx, webServer }) {
+const FONT_FAMILY = "HarmonyOS Sans SC";
+const FONT_REG_KEY = "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
+const FONT_FILES = [
+  ["HarmonyOS_Sans_SC_Thin.ttf", "HarmonyOS Sans SC Thin (TrueType)"],
+  ["HarmonyOS_Sans_SC_Light.ttf", "HarmonyOS Sans SC Light (TrueType)"],
+  ["HarmonyOS_Sans_SC_Regular.ttf", "HarmonyOS Sans SC (TrueType)"],
+  ["HarmonyOS_Sans_SC_Medium.ttf", "HarmonyOS Sans SC Medium (TrueType)"],
+  ["HarmonyOS_Sans_SC_Bold.ttf", "HarmonyOS Sans SC Bold (TrueType)"],
+  ["HarmonyOS_Sans_SC_Black.ttf", "HarmonyOS Sans SC Black (TrueType)"],
+];
+
+async function findFontSource(cfg) {
+  const candidates = [
+    cfg.fontDir,
+    join(homedir(), "Desktop", "高域VIS（可外发）", "03-鸿蒙字体（对外仅可用该字体）"),
+    join(homedir(), "Desktop", "鸿蒙字体（对外仅可用该字体）"),
+    join(homedir(), "Downloads", "鸿蒙字体（对外仅可用该字体）"),
+    packageFile("fonts"),
+  ].filter(Boolean);
+  for (const dir of candidates) {
+    try {
+      const names = await readdir(dir);
+      if (names.some((name) => name === "HarmonyOS_Sans_SC_Regular.ttf")) return dir;
+    } catch {
+      /* 继续找下一个候选目录 */
+    }
+  }
+  return "";
+}
+
+async function fontStatus(cfg) {
+  if (process.platform !== "win32") {
+    return { supported: false, installed: false, family: FONT_FAMILY, sourceDir: "", note: "非 Windows 系统请手动安装字体" };
+  }
+  let registry = false;
+  try {
+    const { stdout } = await execFileAsync("reg", ["query", FONT_REG_KEY]);
+    registry = stdout.includes("HarmonyOS Sans SC");
+  } catch {
+    registry = false;
+  }
+  const dirs = [
+    join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Microsoft", "Windows", "Fonts"),
+    join(process.env.WINDIR ?? "C:\\Windows", "Fonts"),
+  ];
+  let files = 0;
+  for (const dir of dirs) {
+    try {
+      files += (await readdir(dir)).filter((name) => /^HarmonyOS_Sans_SC_.*\.ttf$/i.test(name)).length;
+    } catch {
+      /* 目录不存在时跳过 */
+    }
+  }
+  const sourceDir = await findFontSource(cfg);
+  return {
+    supported: true,
+    installed: registry && files > 0,
+    family: FONT_FAMILY,
+    registry,
+    files,
+    sourceDir,
+    sourceAvailable: Boolean(sourceDir),
+  };
+}
+
+async function installHarmonyFont(cfg) {
+  if (process.platform !== "win32") fail("当前只支持 Windows 自动安装；macOS 请双击 ttf 安装到字体册。");
+  const status = await fontStatus(cfg);
+  if (status.installed) {
+    return { installed: true, alreadyInstalled: true, copied: 0, family: FONT_FAMILY, restartRequired: false };
+  }
+  const sourceDir = await findFontSource(cfg);
+  if (!sourceDir) {
+    fail(
+      "找不到鸿蒙字体目录。可在配置里填写 fontDir，或把 HarmonyOS_Sans_SC_*.ttf 放到桌面「鸿蒙字体（对外仅可用该字体）」目录后重试。",
+    );
+  }
+  const dest = join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Microsoft", "Windows", "Fonts");
+  await mkdir(dest, { recursive: true });
+  let copied = 0;
+  let skipped = 0;
+  for (const [file, regName] of FONT_FILES) {
+    const src = join(sourceDir, file);
+    try {
+      await stat(src);
+    } catch {
+      continue;
+    }
+    const dst = join(dest, file);
+    try {
+      await copyFile(src, dst);
+      copied += 1;
+    } catch (err) {
+      // 字体已存在且被系统占用时无法覆盖，只要注册表登记成功就算可用。
+      if (err && (err.code === "EBUSY" || err.code === "EPERM")) skipped += 1;
+      else throw err;
+    }
+    await execFileAsync("reg", ["add", FONT_REG_KEY, "/v", regName, "/t", "REG_SZ", "/d", dst, "/f"]);
+  }
+  if (copied === 0 && skipped === 0) fail(`字体目录里没有可安装的 ttf：${sourceDir}`);
+  return { installed: true, copied, skipped, sourceDir, family: FONT_FAMILY, restartRequired: copied > 0 || skipped > 0 };
+}
+
+async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
   try {
     if (req.method !== "POST") {
       sendJson(res, 405, { ok: false, error: "只支持 POST" });
@@ -265,6 +368,12 @@ async function handleJswjRequest(req, res, { ctx, webServer }) {
         };
         break;
       }
+      case "font.status":
+        value = await fontStatus(cfg);
+        break;
+      case "font.install":
+        value = await installHarmonyFont(cfg);
+        break;
       case "wiki.list": {
         const listArgs = {};
         if (body.parent !== undefined && body.parent !== null && body.parent !== "") listArgs.parent = String(body.parent);
@@ -943,7 +1052,7 @@ function apply(ctx, config = {}) {
         webServer.register({
           kind: "exact",
           path: "/api/jswj",
-          handler: (req, res) => handleJswjRequest(req, res, { ctx, webServer }),
+          handler: (req, res) => handleJswjRequest(req, res, { ctx, webServer, cfg }),
         }),
       "jswj: page data route",
     );
