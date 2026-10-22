@@ -819,7 +819,7 @@ window.__ModuleLoader__.load({
                   h(
                     "select",
                     { style: s.input, value: form.attrs.tier || "T2 子系统级", onChange: setAttrs("tier") },
-                    ["T0 飞机级", "T1 系统级", "T2 子系统级", "T3 设备级", "T4 软硬件级"].map((v) => h("option", { key: v }, v)),
+                    ["T0 飞机级", "T1 系统级", "T2 子系统级", "T3 设备级", "T4 软硬件级", "T5 零件级"].map((v) => h("option", { key: v }, v)),
                   ),
                 ),
                 h("div", { style: s.field },
