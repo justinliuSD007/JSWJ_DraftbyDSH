@@ -486,6 +486,7 @@ window.__ModuleLoader__.load({
       const [notice, setNotice] = React.useState("");
       const [font, setFont] = React.useState({ loading: true });
       const [confirmId, setConfirmId] = React.useState("");
+      const [updateInfo, setUpdateInfo] = React.useState(null);
 
       const loadTasks = async () => {
         try {
@@ -633,6 +634,21 @@ window.__ModuleLoader__.load({
         });
       };
 
+      const checkUpdate = async () => {
+        await run(async () => {
+          const info = await call("update.check");
+          setUpdateInfo(info);
+          setNotice(info.ok ? (info.hasUpdate ? `发现新版本 v${info.latest}` : `已是最新版本 v${info.current}`) : info.error);
+        });
+      };
+
+      const downloadUpdate = async () => {
+        await run(async () => {
+          const result = await call("update.download", { version: updateInfo?.latest || "" });
+          setNotice(`更新包已下载到 ${result.path}；请用插件管理覆盖安装后重载 DSH。`);
+        });
+      };
+
       const removeTask = async (id) => {
         await run(async () => {
           const result = await call("tasks.delete", { id });
@@ -676,8 +692,30 @@ window.__ModuleLoader__.load({
                 "div",
                 { style: s.actionsRow },
                 h("button", { style: s.btnSecondary, onClick: () => run(loadTasks) }, "刷新"),
+                h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: checkUpdate }, "检查更新"),
               ),
             ),
+            updateInfo
+              ? h(
+                  "div",
+                  { style: { ...s.note, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
+                  h(
+                    "span",
+                    { style: { color: updateInfo.ok ? (updateInfo.hasUpdate ? C.warn : C.ok) : C.err } },
+                    updateInfo.ok
+                      ? updateInfo.hasUpdate
+                        ? `发现新版本 v${updateInfo.latest}（当前 v${updateInfo.current}）`
+                        : `已是最新版本 v${updateInfo.current}`
+                      : `检查更新失败：${updateInfo.error || "未配置 GitHub 访问"}`,
+                  ),
+                  updateInfo.ok && updateInfo.hasUpdate && updateInfo.url
+                    ? h("a", { style: s.link, href: updateInfo.url, target: "_blank", rel: "noreferrer" }, "查看更新说明")
+                    : null,
+                  updateInfo.ok && updateInfo.hasUpdate
+                    ? h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: downloadUpdate }, "下载更新包")
+                    : null,
+                )
+              : null,
             error ? h("div", { style: { color: C.err, fontSize: 13, marginBottom: 12 } }, error) : null,
             h(
               "div",

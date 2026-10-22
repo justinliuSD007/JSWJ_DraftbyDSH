@@ -678,6 +678,12 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         };
         break;
       }
+      case "update.check":
+        value = await checkUpdate(cfg);
+        break;
+      case "update.download":
+        value = await downloadUpdate(cfg, String(body.version ?? ""));
+        break;
       case "summary.sync": {
         const task = await getTask(String(body.id ?? ""));
         if (task.status !== "completed") throw new Error("任务尚未完成，不能同步总结");
@@ -1080,6 +1086,116 @@ async function cleanupTaskArtifacts(cfg, ctx, task) {
   return result;
 }
 
+async function ensureBundledSkill() {
+  try {
+    const source = packageFile("skills/jswj-draftbydsh/SKILL.md");
+    const dir = join(homedir(), ".dsh", "skills", "jswj-draftbydsh");
+    const target = join(dir, "SKILL.md");
+    const content = await readFile(source, "utf8");
+    let current = "";
+    try {
+      current = await readFile(target, "utf8");
+    } catch {
+      current = "";
+    }
+    if (current !== content) {
+      await mkdir(dir, { recursive: true });
+      await writeFile(target, content, "utf8");
+    }
+  } catch {
+    /* 技能安装失败不应阻塞插件加载 */
+  }
+}
+
+function parseVersion(value) {
+  return String(value ?? "")
+    .replace(/^v/i, "")
+    .split(/[.+-]/)
+    .slice(0, 3)
+    .map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function isNewerVersion(latest, current) {
+  const a = parseVersion(latest);
+  const b = parseVersion(current);
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
+  }
+  return false;
+}
+
+async function githubJson(cfg, path) {
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "JSWJ-DraftbyDSH",
+  };
+  if (cfg.githubToken) headers.Authorization = `Bearer ${cfg.githubToken}`;
+  const res = await fetch(`https://api.github.com${path}`, { headers });
+  if (!res.ok) throw new Error(`GitHub ${res.status}：${path}`);
+  return res.json();
+}
+
+async function checkUpdate(cfg) {
+  const current = JSON.parse(await readFile(packageFile("package.json"), "utf8")).version;
+  const owner = String(cfg.updateOwner || "justinliuSD007");
+  const repo = String(cfg.updateRepo || "JSWJ_DraftbyDSH");
+  const base = `/repos/${owner}/${repo}`;
+
+  let release = null;
+  try {
+    release = await githubJson(cfg, `${base}/releases/latest`);
+  } catch {
+    release = null;
+  }
+
+  if (!release) {
+    const tags = await githubJson(cfg, `${base}/tags?per_page=1`);
+    const tag = (tags ?? [])[0];
+    if (!tag) return { ok: false, error: "GitHub 仓库还没有 release 或 tag" };
+    return {
+      ok: true,
+      current,
+      latest: String(tag.name ?? "").replace(/^v/i, ""),
+      hasUpdate: isNewerVersion(tag.name, current),
+      url: `https://github.com/${owner}/${repo}/releases`,
+      notes: "",
+      asset: null,
+      source: "tag",
+    };
+  }
+
+  const latest = String(release.tag_name ?? "").replace(/^v/i, "");
+  const asset = (release.assets ?? []).find((item) => /\.zip$/i.test(item.name) && /jswj-draft/i.test(item.name)) ?? null;
+  return {
+    ok: true,
+    current,
+    latest,
+    hasUpdate: isNewerVersion(latest, current),
+    url: release.html_url,
+    notes: release.body ?? "",
+    asset: asset ? { name: asset.name, size: asset.size, url: asset.browser_download_url } : null,
+    source: "release",
+  };
+}
+
+async function downloadUpdate(cfg, version) {
+  const info = await checkUpdate(cfg);
+  if (!info.ok) throw new Error(info.error || "检查更新失败");
+  if (!info.hasUpdate) throw new Error("当前已经是最新版本");
+  const headers = { "User-Agent": "JSWJ-DraftbyDSH" };
+  if (cfg.githubToken) headers.Authorization = `Bearer ${cfg.githubToken}`;
+  const url = info.asset?.url || `https://api.github.com/repos/${cfg.updateOwner || "justinliuSD007"}/${cfg.updateRepo || "JSWJ_DraftbyDSH"}/zipball`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const dir = join(homedir(), ".dsh", "jswj-updates");
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, info.asset?.name || `jswj-draft-${version || info.latest}.zip`);
+  await writeFile(file, buffer);
+  return { ok: true, path: file, version: info.latest, url: info.url, size: buffer.length };
+}
+
 function apply(ctx, config = {}) {
   const cfg = {
     appId: process.env.JSWJ_APP_ID ?? "",
@@ -1092,10 +1208,16 @@ function apply(ctx, config = {}) {
     summaryTableId: process.env.JSWJ_SUMMARY_TABLE_ID ?? "",
     wikiBaseUrl: process.env.JSWJ_WIKI_BASE_URL ?? "https://govy.feishu.cn",
     wikiHomeUrl: process.env.JSWJ_WIKI_HOME_URL ?? "",
+    installSkill: true,
+    updateOwner: process.env.JSWJ_UPDATE_OWNER ?? "justinliuSD007",
+    updateRepo: process.env.JSWJ_UPDATE_REPO ?? "JSWJ_DraftbyDSH",
+    githubToken: process.env.JSWJ_GITHUB_TOKEN ?? "",
     pythonPath: process.env.JSWJ_PYTHON ?? "",
     outputDir: "",
     ...config,
   };
+
+  if (cfg.installSkill !== false) ensureBundledSkill();
 
   // ---------------------------------------------------------------- 配置自检
 
