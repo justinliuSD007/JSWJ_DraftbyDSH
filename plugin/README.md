@@ -90,6 +90,30 @@ node selftest.mjs --cleanup
 
 自测会依次执行 ping、列节点、读模板、渲染 Word、发布并删除测试节点。
 
+## 页面交互
+
+页面不是只读说明页。首屏「快速开始」提供：
+
+- 文件名称、文件类型、密级、层级、板块五个字段；
+- 「开始起草」：新建会话并向助手投递结构化指令，随后自动切到对话；
+- 「开始预审」：同上，进入预审流程；
+- 「复制指令」：剪贴板兜底，权限受限或 Remote 不可用时仍可继续；
+- 「打开知识库」：跳到草稿库节点。
+
+交互实现走 DSH 的 Remote 通道，不在页面里重复业务逻辑：
+
+```js
+const created = await ctx.remote.session.create({});
+await ctx.remote.session.prompt({
+  requestId, sessionId: created.sessionId, mode: "queue",
+  content: [{ type: "text", text: command }],
+  clientTimeZone,
+});
+ctx.uiWorkspace.openSession(created.sessionId);
+```
+
+页面只负责「收集意图 + 展示状态」，真正的读写、渲染、发布仍由助手调用 7 个工具完成。
+
 ## 已知限制
 
 - 单文件 ≤ 20 MB（飞书 `upload_all` 上限）。

@@ -8,6 +8,7 @@
 - 知识库读写：列节点、读正文、建节点、追加段落。
 - Word 出稿：Markdown → 套用 GY-F003 模板的 `.docx`，封面、页眉、章节、表格自动处理。
 - 发布：`.docx` 上传后作为**文件节点**移入知识库，保留 Word 原文件，返回节点链接。
+- 可交互页面：填表 → 新建会话 → 投递结构化指令 → 自动切到对话，另有「复制指令」「打开知识库」。
 
 ## 仓库结构
 
@@ -75,6 +76,8 @@ skills/jswj-draftbydsh/      Skill：两条业务流、门禁、出稿规范、�
 - `node --check` 两个入口通过。
 - 自测覆盖 ping → 列节点 → 读模板 → 渲染 176 KB Word → 上传 → 移入知识库 → 返回链接，测试节点已清理。
 - `main`（key `jswj-draft`）与 `sidebar.panellist`（id `jswj-draft`）槽位注册为 `active`。
+- 页面交互通过 `ctx.remote.session.create/prompt` + `ctx.uiWorkspace.openSession` 实现；
+  模块加载与槽位注册已验证，按钮点击链路待人工点一次确认。
 - 实机工具通道调用 `jswj_ping` 成功：空间名「技术资料起草库」、三个根节点、出稿父节点、
   Python 与模板状态均正确，证明凭据由 profile 覆盖层生效。
 - 浏览器中的实际视觉呈现未做自动化截图验证。
