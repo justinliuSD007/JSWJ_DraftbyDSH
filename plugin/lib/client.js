@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
       draft: [
         "填文件名称、选类型与密级；名称做重名检测，编号可空。",
         "选层级、板块与归档位置，目录由属性推导。",
-        "粘贴云文档链接或上传原件，至少一份解析成功才能继续。",
+        "粘贴云文档链接或上传原件，并为每份选择参考程度。",
         "确认大纲，补一、二级要点；三级以下可留空。",
         "逐章生成，自检与修订由助手在这一步内部完成。",
         "看成稿、提意见、确认成稿；意见由助手定向修订。",
@@ -412,6 +412,7 @@ window.__ModuleLoader__.load({
           nodeToken: d.draft?.nodeToken || "",
           version: d.draft?.version || 1,
           comments: d.draft?.comments || "",
+          commentHistory: Array.isArray(d.draft?.commentHistory) ? d.draft.commentHistory : [],
           confirmed: Boolean(d.draft?.confirmed),
         },
         sessions: { ...(d.sessions || {}) },
@@ -448,10 +449,26 @@ window.__ModuleLoader__.load({
       document.body.removeChild(area);
     }
 
-    function promptFor(task, step, extra) {      const names = stepsOf(task.flow);
+    function promptFor(task, step, extra) {
+      const names = stepsOf(task.flow);
+      const modeLabels = {
+        template: "直接套用：沿用章节结构、行文语气、表格与图片，只按本次主题改写内容",
+        structure: "参考结构：沿用章节与写法，正文重写",
+        background: "背景资料：只取事实、数据与约束，重新起草，不照搬结构",
+      };
+      const sources = task.data?.sources || [];
+      const sourceLines = sources
+        .map(
+          (source, index) =>
+            `${index + 1}. ${source.title || source.url}：${modeLabels[source.mode] || modeLabels.structure}${
+              source.images?.length ? `；可直接使用其中 ${source.images.length} 张图片（路径见 sources[].images）` : ""
+            }`,
+        )
+        .join("\n");
       return [
         `【JSWJ 任务 ${task.id} · 第 ${step} 步：${names[step - 1]}】`,
         "请加载 jswj-draftbydsh 技能，先调用 jswj_task_get 读取该任务，再按任务数据完成这一步。",
+        sourceLines ? `参考资料使用程度：\n${sourceLines}` : "",
         extra || "",
         "完成后必须调用 jswj_task_update 把结果写回任务（generation / selfcheck / revision / review.issues），然后回到「技术文件起草」页面点刷新继续。",
       ]
@@ -913,7 +930,7 @@ window.__ModuleLoader__.load({
                 set({
                   sources: [
                     ...form.sources.filter((x) => x.url !== link),
-                    { url: link, title: doc.title || link, ok: true, chars: doc.chars, objToken: doc.objToken },
+                    { url: link, title: doc.title || link, ok: true, chars: doc.chars, objToken: doc.objToken, mode: "structure" },
                   ],
                   link: "",
                 });
@@ -941,6 +958,8 @@ window.__ModuleLoader__.load({
                       chars: uploaded.chars,
                       textPath: uploaded.textPath,
                       nodeToken: uploaded.nodeToken,
+                      images: uploaded.images || [],
+                      mode: "structure",
                     },
                   ],
                 });
@@ -949,6 +968,13 @@ window.__ModuleLoader__.load({
               event.target.value = "";
             };
             const okCount = form.sources.filter((x) => x.ok).length;
+            const SOURCE_MODES = [
+              ["template", "直接套用（结构 / 行文 / 图片）"],
+              ["structure", "参考结构（正文重写）"],
+              ["background", "背景资料（重新起草）"],
+            ];
+            const setSourceMode = (index, mode) =>
+              set({ sources: form.sources.map((item, idx) => (idx === index ? { ...item, mode } : item)) });
             return h(
               "div",
               null,
@@ -989,8 +1015,20 @@ window.__ModuleLoader__.load({
                             "div",
                             { style: s.mono },
                             item.ok
-                              ? `已解析 · ${item.chars} 字${item.kind === "upload" ? " · 已留存资料库" : ""}`
+                              ? `已解析 · ${item.chars} 字${item.kind === "upload" ? " · 已留存资料库" : ""}${
+                                  item.images?.length ? ` · ${item.images.length} 张图` : ""
+                                }`
                               : `解析失败：${item.error || ""}`,
+                          ),
+                          h(
+                            "select",
+                            {
+                              style: { ...s.input, marginTop: 6, maxWidth: 320, width: "auto" },
+                              value: item.mode || "structure",
+                              disabled: !item.ok,
+                              onChange: (e) => setSourceMode(i, e.target.value),
+                            },
+                            SOURCE_MODES.map(([value, label]) => h("option", { key: value, value }, label)),
                           ),
                         ),
                         h(
@@ -1001,7 +1039,7 @@ window.__ModuleLoader__.load({
                       ),
                     ),
               ),
-              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。上传的 docx / md 会同步为知识库文件节点，并抽出纯文本供助手读取。"),
+              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：直接套用（结构/行文/图片）、参考结构（正文重写）、背景资料（重新起草）。"),
               h(
                 "div",
                 { style: s.footer },
@@ -1432,7 +1470,13 @@ window.__ModuleLoader__.load({
               run(async () => {
                 const comments = String(form.draft?.comments || "").trim();
                 if (!comments) throw new Error("请先写下需要修改的意见");
-                const next = { ...draft, comments, confirmed: false };
+                const history = Array.isArray(draft.commentHistory) ? draft.commentHistory : [];
+                const next = {
+                  ...draft,
+                  comments,
+                  commentHistory: [...history, { version: draft.version || 1, comments, at: new Date().toISOString() }],
+                  confirmed: false,
+                };
                 await call("tasks.patch", { id: task.id, patch: { data: { draft: next } } });
                 const prompt = promptFor(
                   task,

@@ -52,6 +52,14 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
 
+参考资料参考程度看 `sources[].mode`：
+
+- `template` 直接套用：沿用章节结构、行文语气、表格与内嵌图片，只按本次主题改写内容。
+- `structure` 参考结构：沿用章节与写法，正文重写。
+- `background` 背景资料：只取事实、数据与约束，重新起草，不照搬结构。
+
+上传 docx 的内嵌图片已抽到 `sources[].images`（本地绝对路径）；`template` 模式可直接在 Markdown 中引用这些图片，`structure` / `background` 模式不要直接套用图片。
+
 生成：逐章生成正文后，在同一回合内自动自检并修订到没有严重项，再把 `generation.status=done`、成稿正文 `draft.markdown`、`draft.ready=true`、`draft.version` 写回任务。不要让用户逐步确认自检与修订。
 
 成稿确认：用户把意见写在 `draft.comments`。按意见逐条定向修改，只改意见指出的位置，不整体润色、不补写整节；完成后 `draft.version` 加 1、`draft.ready=true`、`draft.confirmed=false`，并写回任务。
@@ -131,6 +139,12 @@ Markdown 结构决定 Word 结构：
 - `name` 用「{编号?}-{文件名称}-{版本}.docx」，编号为空则不带前缀。
 - 发布成功后必须给出 `wikiToken` 与 `url`，并把它记为本次出稿回执。
 - 发布失败时保留本地产物与返回的 `file_token`，不要重新渲染后再上传一遍。
+
+## 用户意见与版本规则
+
+- 每次成稿意见记录在任务 `draft.commentHistory`，任务完成时随总结写入多维表格的「用户意见」列。
+- 单条意见只作用于当前任务，不直接改全局规则。
+- 版本发布时，把高频、可复用的意见归纳进本技能与页面提示，随插件一起分发给所有用户；未经归纳的意见不进入全局。
 
 ## 失败与降级
 

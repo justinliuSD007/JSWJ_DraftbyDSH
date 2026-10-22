@@ -309,14 +309,16 @@ async function installHarmonyFont(cfg) {
   return { installed: true, copied, skipped, sourceDir, family: FONT_FAMILY, restartRequired: copied > 0 || skipped > 0 };
 }
 
-async function extractSourceText(cfg, filePath, ext) {
+async function extractSourceText(cfg, filePath, ext, imagesDir = "") {
   if (ext === ".md" || ext === ".markdown" || ext === ".txt") {
-    return await readFile(filePath, "utf8");
+    return { text: await readFile(filePath, "utf8"), images: [] };
   }
   if (ext === ".docx") {
     const python = await pickPython(cfg);
     const script = packageFile("python/extract_text.py");
-    const { stdout } = await execFileAsync(python, [script, "--file", filePath], {
+    const args = [script, "--file", filePath];
+    if (imagesDir) args.push("--images-dir", imagesDir);
+    const { stdout } = await execFileAsync(python, args, {
       timeout: 120000,
       maxBuffer: 16 * 1024 * 1024,
       encoding: "utf8",
@@ -328,7 +330,8 @@ async function extractSourceText(cfg, filePath, ext) {
       .find((item) => item.startsWith("JSWJ_TEXT "));
     if (!line) fail("docx 解析失败：解析器没有返回文本");
     try {
-      return JSON.parse(line.slice("JSWJ_TEXT ".length)).text ?? "";
+      const parsed = JSON.parse(line.slice("JSWJ_TEXT ".length));
+      return { text: parsed.text ?? "", images: Array.isArray(parsed.images) ? parsed.images : [] };
     } catch {
       fail("docx 解析失败：返回结果无法解析");
     }
@@ -694,10 +697,11 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const tmp = join(tmpdir(), `jswj-src-${Date.now()}${ext}`);
         await writeFile(tmp, buffer);
         try {
-          const text = await extractSourceText(cfg, tmp, ext);
           const taskId = String(body.taskId ?? "common");
           const dir = join(homedir(), ".dsh", "jswj-sources", taskId);
           await mkdir(dir, { recursive: true });
+          const parsed = await extractSourceText(cfg, tmp, ext, join(dir, "images"));
+          const text = parsed.text;
           const textPath = join(dir, `${safeName(name, "资料")}.txt`);
           await writeFile(textPath, text, "utf8");
 
@@ -711,6 +715,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             title: name,
             chars: text.length,
             textPath,
+            images: parsed.images,
             preview: text.slice(0, 240),
             url: published.url,
             nodeToken: published.wikiToken,
@@ -787,6 +792,7 @@ const SUMMARY_FIELDS = [
   "出稿文件",
   "相关会话数",
   "任务总结",
+  "用户意见",
 ];
 
 function textOf(value) {
@@ -850,6 +856,10 @@ async function syncSummary(cfg, task) {
     task.flow === "draft" ? Math.max(0, Number(draft.version || 1) - 1) : (d.review?.issues ?? []).length;
   const sessions = Object.keys(d.sessions || {}).length;
   const archiveText = attrs.archive === "polarion" ? `Polarion / ${attrs.project || ""}` : "飞书审批";
+  const history = Array.isArray(draft.commentHistory) ? draft.commentHistory : [];
+  const commentsText = history.length
+    ? history.map((entry, index) => `第 ${index + 1} 轮（v${entry.version || ""}）：${entry.comments || ""}`).join("\n\n")
+    : String(draft.comments || "");
   const summaryText = [
     `任务号：${task.id}`,
     `文件名称：${title}`,
@@ -863,7 +873,10 @@ async function syncSummary(cfg, task) {
     `参考资料：${(d.sources ?? []).length} 份`,
     `出稿文件：${publish.url || ""}`,
     `相关会话：${sessions} 个`,
-  ].join("\n");
+    commentsText ? `用户意见：\n${commentsText}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const fields = {
     任务号: task.id,
@@ -880,6 +893,7 @@ async function syncSummary(cfg, task) {
     出稿文件: publish.url || "",
     相关会话数: String(sessions),
     任务总结: summaryText,
+    用户意见: commentsText,
   };
 
   const records = await api(cfg, `/bitable/v1/apps/${appToken}/tables/${tableId}/records?page_size=500`);
