@@ -19,8 +19,11 @@
       config:
         appId: ""
         appSecret: ""
-        spaceId: ""
+        spaceId: "7698962670346636559"
         rootToken: ""
-        draftRootToken: ""
+        draftRootToken: "K3NpwxFzribxgOkzFxaczeH7nXf"
+        wikiBaseUrl: "https://govy.feishu.cn"
+        wikiHomeUrl: "https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb"
+        summaryWikiToken: "P77ZwJyDIiIfoJkmUVccrk7mnfc"
         pythonPath: ""
         outputDir: ""

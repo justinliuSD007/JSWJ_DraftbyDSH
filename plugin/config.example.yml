@@ -6,19 +6,19 @@
     appId: "cli_xxxxxxxxxxxxxxxx"
     appSecret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-    # 知识空间 ID：https://xxx.feishu.cn/wiki/<space> 里对应的空间
+    # 知识空间 ID：当前知识库已统一配置，通常无需修改
     spaceId: "7698962670346636559"
 
     # 根节点与草稿库节点 token；留空时自动从知识空间根节点查找
     rootToken: ""
-    draftRootToken: "<技术资料草稿库 node_token>"
+    draftRootToken: "K3NpwxFzribxgOkzFxaczeH7nXf"
 
     # 租户域名：用于生成资料库复用链接与首页链接
-    wikiBaseUrl: "https://your-tenant.feishu.cn"
-    wikiHomeUrl: "https://your-tenant.feishu.cn/wiki/<知识库首页 node_token>"
+    wikiBaseUrl: "https://govy.feishu.cn"
+    wikiHomeUrl: "https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb"
 
     # 可选：任务完成总结要写入的多维表格 wiki 节点 token；留空则不同步
-    summaryWikiToken: ""
+    summaryWikiToken: "P77ZwJyDIiIfoJkmUVccrk7mnfc"
 
     # 可选：Python 解释器路径；留空使用 DSH 自带运行时
     pythonPath: ""
