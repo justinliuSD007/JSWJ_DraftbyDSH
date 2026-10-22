@@ -432,6 +432,27 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
       case "tasks.step":
         value = await submitStep(String(body.id ?? ""), Number(body.step), body.data ?? {});
         break;
+      case "session.start": {
+        const controller = ctx.get("sessionController");
+        if (!controller) throw new Error("sessionController 不可用，无法新建会话");
+        const text = String(body.text ?? "").trim();
+        if (!text) throw new Error("text 不能为空");
+        const created = await controller.create({});
+        const sessionId = created && created.sessionId;
+        if (!sessionId) throw new Error("创建会话失败：未返回 sessionId");
+        await controller.prompt(
+          {
+            requestId: crypto.randomUUID(),
+            sessionId,
+            mode: "queue",
+            content: [{ type: "text", text }],
+            clientTimeZone: body.timeZone ? String(body.timeZone) : undefined,
+          },
+          AbortSignal.timeout(30000),
+        );
+        value = { sessionId };
+        break;
+      }
       case "tasks.delete":
         value = await deleteTask(String(body.id ?? ""));
         break;

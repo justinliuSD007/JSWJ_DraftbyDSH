@@ -540,9 +540,9 @@ window.__ModuleLoader__.load({
         await run(async () => {
           await Promise.race([
             props.startAgent(promptFor(task, step, extra)),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("投递超时，请用「复制指令」粘贴到对话中")), 12000)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("投递超时，请用「复制指令」粘贴到对话中")), 20000)),
           ]);
-          setNotice("已把任务号交给当前会话；助手完成后回本页点「刷新」。");
+          setNotice("已新建会话并投递任务号；助手完成后回本页点「刷新」。");
         });
       };
 
@@ -1717,30 +1717,9 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const startAgent = async (text) => {
-        let sessionId;
-        try {
-          const listed = await ctx.remote.session.list({});
-          const items = (listed && listed.items) || [];
-          const target =
-            items.find((item) => !item.blank && !item.origin && !item.parentSessionId) ||
-            items.find((item) => !item.blank) ||
-            items[0];
-          sessionId = target && target.sessionId;
-        } catch {
-          sessionId = undefined;
-        }
-        if (!sessionId) {
-          const created = await ctx.remote.session.create({});
-          sessionId = created && created.sessionId;
-        }
-        if (!sessionId) throw new Error("没有可用会话，请复制指令后粘贴到对话中。");
-        await ctx.remote.session.prompt({
-          requestId: requestId(),
-          sessionId,
-          mode: "queue",
-          content: [{ type: "text", text }],
-          clientTimeZone: timeZone(),
-        });
+        const started = await call("session.start", { text, timeZone: timeZone() });
+        const sessionId = started && started.sessionId;
+        if (!sessionId) throw new Error("创建会话失败：未返回 sessionId");
         ctx.uiWorkspace.openSession(sessionId);
       };
 
