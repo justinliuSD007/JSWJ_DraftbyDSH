@@ -1,6 +1,6 @@
-# @govy/dsh-plugin-jswj-draft
+# 技术文件起草（JSWJ_DraftbyDSH）
 
-**JSWJ_DraftbyDSH**：技术文件起草与 AI 预审的 DSH bundle。提供 9 个工具、一个分步任务向导页面：
+技术文件起草（JSWJ_DraftbyDSH），以下简称本插件，是面向飞书知识库的起草与 AI 预审 DSH bundle。本插件提供 9 个工具、一个分步任务向导页面：
 
 - 知识库读写：`jswj_ping` / `jswj_wiki_list` / `jswj_doc_read` / `jswj_wiki_create` / `jswj_doc_append`
 - Word 出稿：`jswj_render_docx`（Markdown → GY-F003 .docx）

@@ -1,6 +1,6 @@
-# JSWJ_DraftbyDSH
+# 技术文件起草（JSWJ_DraftbyDSH）
 
-面向飞书知识库的**技术文件起草与 AI 预审**工具，以 DSH（DeepSeek Harness）插件 + Skill 形式交付。
+技术文件起草（JSWJ_DraftbyDSH），以下简称本插件，是面向飞书知识库的**技术文件起草与 AI 预审**工具，以 DSH（DeepSeek Harness）插件 + Skill 形式交付。
 
 ## 能力
 

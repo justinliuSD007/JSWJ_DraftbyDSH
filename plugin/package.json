@@ -1,9 +1,9 @@
 {
   "name": "@govy/dsh-plugin-jswj-draft",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
-  "description": "JSWJ_DraftbyDSH：技术文件起草与 AI 预审。提供飞书知识库读写、Word 套版出稿与知识库发布工具，以及一个独立流程页。",
+  "description": "技术文件起草（JSWJ_DraftbyDSH），以下简称本插件：面向飞书知识库的起草与 AI 预审，提供 9 个工具与分步任务页面。",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
