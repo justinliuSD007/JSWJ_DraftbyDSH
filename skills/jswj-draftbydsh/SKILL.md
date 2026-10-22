@@ -53,7 +53,7 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 第 6 步自检：只做检查并把 `selfcheck.status` 与 `items` 写回任务，不在这一步修改正文。
 
-第 7 步修订：把 `selfcheck.items` 汇总为 `revision.items`，按条目逐条修改正文，只改指定位置，不整体润色、不补写整节；完成后把 `selfcheck` 置为待检查、`revision.round` 加 1、`revision.confirmed` 置 false，并写回任务。用户回第 6 步重新自检。
+第 7 步修订：把 `selfcheck.items` 汇总为 `revision.items`，按条目逐条修改正文，只改指定位置，不整体润色、不补写整节；完成后把 `selfcheck` 置为待检查、`revision.round` 加 1、`revision.done` 置 true、`revision.executedAt` 写当前时间、`revision.confirmed` 置 false，并写回任务。用户回第 6 步重新自检。
 
 ## 知识库落位
 

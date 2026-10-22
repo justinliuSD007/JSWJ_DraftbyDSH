@@ -165,7 +165,7 @@ export async function createTask(flow) {
       outline: { chapters: [], confirmed: false },
       generation: { status: "idle", note: "" },
       selfcheck: { status: "pending", items: [] },
-      revision: { round: 1, items: [], confirmed: false },
+      revision: { round: 1, items: [], confirmed: false, done: false, executedAt: "" },
       publish: {},
       sessions: {},
       review: {
@@ -240,7 +240,7 @@ export function evaluateGate(flow, step, task) {
       const items = d.selfcheck?.items ?? [];
       const blockers = items.filter((item) => item.severity === "严重");
       need((d.revision?.round ?? 1) <= 3 || d.revision?.overrunConfirmed, "G7：超过三轮须显式确认继续");
-      need(d.revision?.confirmed === true, "G7：请先确认修订要点");
+      need(d.revision?.done === true, "G7：修订尚未执行完成，等助手写回后再出稿");
       need(blockers.length === 0, `G7：自检仍有 ${blockers.length} 条必须处理项，修订完成后再出稿`);
     }
     if (step === 8) need(String(d.publish?.url ?? "").trim(), "G8：文件尚未出稿");

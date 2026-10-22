@@ -393,6 +393,8 @@ window.__ModuleLoader__.load({
           round: d.revision?.round || 1,
           items: Array.isArray(d.revision?.items) ? d.revision.items : [],
           confirmed: Boolean(d.revision?.confirmed),
+          done: Boolean(d.revision?.done),
+          executedAt: d.revision?.executedAt || "",
         },
         review: {
           confirmed: Boolean(d.review?.confirmed),
@@ -1103,13 +1105,13 @@ window.__ModuleLoader__.load({
               return run(async () => {
                 await call("tasks.patch", {
                   id: task.id,
-                  patch: { data: { revision: { ...revision, confirmed: true } } },
+                  patch: { data: { revision: { ...revision, confirmed: true, done: false, executedAt: "" } } },
                 });
                 await props.startAgent(
                   promptFor(
                     task,
                     7,
-                    "按 revision.items 逐条执行定向修订，只改意见指出的位置，不整体润色、不补写整节；完成后更新 selfcheck 与 revision.round，把 revision.confirmed 置 false，并写回任务。",
+                    "按 revision.items 逐条执行定向修订，只改意见指出的位置，不整体润色、不补写整节；完成后更新 selfcheck 与 revision.round，把 revision.done 置 true、executedAt 写当前时间、confirmed 置 false，并写回任务。",
                   ),
                   sessionTitleFor(7),
                   task.id,
@@ -1119,6 +1121,14 @@ window.__ModuleLoader__.load({
                 setNotice("已确认修订并交给助手；完成后刷新，再回第 6 步自检。");
               });
             };
+
+            const revisionState = revision.done
+              ? `修订已完成${revision.executedAt ? " · " + String(revision.executedAt).replace("T", " ").slice(0, 16) : ""}`
+              : revision.confirmed
+                ? "修订已确认，等待助手执行"
+                : items.length
+                  ? "待确认修订要点"
+                  : "待汇总修订要点";
 
             const issueRow = (it, index, withCheck) =>
               h(
@@ -1225,11 +1235,11 @@ window.__ModuleLoader__.load({
                       h(
                         "div",
                         { style: s.row },
-                        h("span", { style: { color: C.warn } }, "↻"),
+                        h("span", { style: { color: revision.done ? C.ok : C.warn } }, revision.done ? "✓" : "↻"),
                         h(
                           "div",
                           { style: s.rowMain },
-                          h("div", null, `第 ${revision.round || 1} 轮修订`),
+                          h("div", null, `第 ${revision.round || 1} 轮修订 · ${revisionState}`),
                           h("div", { style: s.mono }, `${must.length} 条必须处理 · ${suggest.length} 条建议看看`),
                         ),
                       ),
@@ -1277,7 +1287,7 @@ window.__ModuleLoader__.load({
             const canNext =
               (step === 5 && gen.status === "done") ||
               (step === 6 && selfcheckFinished) ||
-              (step === 7 && revision.confirmed && selfcheckReady);
+              (step === 7 && revision.done && selfcheckReady);
             return h(
               "div",
               null,
@@ -1343,7 +1353,9 @@ window.__ModuleLoader__.load({
                       ? "下一步：修订"
                       : "自检未完成"
                     : step === 7
-                      ? "修订完成，去出稿"
+                      ? revision.done
+                        ? "修订完成，去出稿"
+                        : "等待修订完成"
                       : "下一步",
                 ),
                 error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
