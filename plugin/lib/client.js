@@ -15,17 +15,17 @@ window.__ModuleLoader__.load({
     const inject = ["slots", "remote", "remote.session", "uiWorkspace"];
 
     const C = {
-      text: "var(--dsw-alias-label-primary)",
-      sub: "var(--dsw-alias-label-secondary)",
-      line: "var(--dsw-alias-border-l1)",
-      line2: "var(--dsw-alias-border-l2)",
-      base: "var(--dsw-alias-bg-base)",
-      layer1: "var(--dsw-alias-bg-layer-1)",
-      layer2: "var(--dsw-alias-bg-layer-2)",
-      brand: "var(--dsw-alias-brand-primary)",
-      ok: "var(--dsw-alias-state-success-primary)",
-      warn: "var(--dsw-alias-state-warn-primary)",
-      err: "var(--dsw-alias-state-error-primary)",
+      text: "var(--dsw-alias-label-primary, inherit)",
+      sub: "var(--dsw-alias-label-secondary, inherit)",
+      line: "var(--dsw-alias-border-l1, rgba(127,127,127,0.28))",
+      line2: "var(--dsw-alias-border-l2, rgba(127,127,127,0.45))",
+      base: "var(--dsw-alias-bg-base, transparent)",
+      layer1: "var(--dsw-alias-bg-layer-1, rgba(127,127,127,0.06))",
+      layer2: "var(--dsw-alias-bg-layer-2, rgba(127,127,127,0.10))",
+      brand: "var(--dsw-alias-brand-primary, #2468d8)",
+      ok: "var(--dsw-alias-state-success-primary, #12a05c)",
+      warn: "var(--dsw-alias-state-warn-primary, #c77800)",
+      err: "var(--dsw-alias-state-error-primary, #d54941)",
     };
     const MONO = "ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace";
 
@@ -91,7 +91,7 @@ window.__ModuleLoader__.load({
       },
       inner: { maxWidth: 1080, margin: "0 auto" },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
-      h1: { fontSize: 22, fontWeight: 650, margin: 0 },
+      h1: { fontSize: 22, fontWeight: 650, margin: 0, color: C.text },
       sub: { color: C.sub, fontSize: 13 },
       actionsRow: { display: "flex", gap: 10, marginLeft: "auto", flexWrap: "wrap" },
       btn: {
@@ -130,11 +130,12 @@ window.__ModuleLoader__.load({
       taskCard: {
         border: `1px solid ${C.line}`,
         background: C.layer1,
+        color: C.text,
         borderRadius: 12,
         padding: "14px 16px",
         cursor: "pointer",
       },
-      taskTitle: { fontSize: 14, fontWeight: 600, marginBottom: 6 },
+      taskTitle: { fontSize: 14, fontWeight: 600, marginBottom: 6, color: C.text },
       taskMeta: { fontSize: 12, color: C.sub, display: "flex", gap: 10, flexWrap: "wrap" },
       badge: {
         display: "inline-flex",
@@ -155,7 +156,7 @@ window.__ModuleLoader__.load({
         position: "sticky",
         top: 0,
       },
-      railTitle: { fontSize: 14, fontWeight: 600, marginBottom: 4, wordBreak: "break-all" },
+      railTitle: { fontSize: 14, fontWeight: 600, marginBottom: 4, wordBreak: "break-all", color: C.text },
       railMeta: { fontSize: 12, color: C.sub, marginBottom: 12 },
       stepItem: {
         display: "flex",
@@ -164,6 +165,7 @@ window.__ModuleLoader__.load({
         padding: "8px 8px",
         borderRadius: 8,
         fontSize: 13,
+        color: C.text,
       },
       stepIndex: { fontFamily: MONO, fontSize: 11, color: C.sub, width: 18 },
       stepDone: { color: C.sub },
@@ -172,11 +174,12 @@ window.__ModuleLoader__.load({
       card: {
         border: `1px solid ${C.line}`,
         background: C.layer1,
+        color: C.text,
         borderRadius: 14,
         padding: "18px 20px",
       },
       cardHead: { fontFamily: MONO, fontSize: 11, color: C.sub, marginBottom: 6 },
-      cardTitle: { fontSize: 17, fontWeight: 600, margin: "0 0 6px" },
+      cardTitle: { fontSize: 17, fontWeight: 600, margin: "0 0 6px", color: C.text },
       cardDesc: { fontSize: 13, color: C.sub, lineHeight: 1.7, marginBottom: 16 },
       grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 },
       field: { display: "flex", flexDirection: "column", gap: 6 },
@@ -225,6 +228,7 @@ window.__ModuleLoader__.load({
         borderRadius: 10,
         border: `1px solid ${C.line}`,
         background: C.layer2,
+        color: C.text,
         fontSize: 13,
       },
       rowMain: { flex: 1, minWidth: 0 },
@@ -246,6 +250,7 @@ window.__ModuleLoader__.load({
         alignItems: "center",
         padding: "6px 0",
         borderTop: `1px solid ${C.line}`,
+        color: C.text,
       },
       chapterInput: {
         height: 30,
