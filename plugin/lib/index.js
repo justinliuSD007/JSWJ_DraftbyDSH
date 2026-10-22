@@ -309,6 +309,82 @@ async function installHarmonyFont(cfg) {
   return { installed: true, copied, skipped, sourceDir, family: FONT_FAMILY, restartRequired: copied > 0 || skipped > 0 };
 }
 
+async function extractSourceText(cfg, filePath, ext) {
+  if (ext === ".md" || ext === ".markdown" || ext === ".txt") {
+    return await readFile(filePath, "utf8");
+  }
+  if (ext === ".docx") {
+    const python = await pickPython(cfg);
+    const script = packageFile("python/extract_text.py");
+    const { stdout } = await execFileAsync(python, [script, "--file", filePath], {
+      timeout: 120000,
+      maxBuffer: 16 * 1024 * 1024,
+      encoding: "utf8",
+      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+    });
+    const line = stdout
+      .split(/\r?\n/)
+      .reverse()
+      .find((item) => item.startsWith("JSWJ_TEXT "));
+    if (!line) fail("docx 解析失败：解析器没有返回文本");
+    try {
+      return JSON.parse(line.slice("JSWJ_TEXT ".length)).text ?? "";
+    } catch {
+      fail("docx 解析失败：返回结果无法解析");
+    }
+  }
+  fail(`暂不支持 ${ext}，请上传 .docx、.md、.markdown 或 .txt`);
+}
+
+async function ensureWikiChild(cfg, parent, title) {
+  const space = spaceRoot(cfg);
+  const query = parent ? `&parent_node_token=${encodeURIComponent(parent)}` : "";
+  const listed = await api(cfg, `/wiki/v2/spaces/${space}/nodes?page_size=50${query}`);
+  const found = (listed.items ?? []).find((item) => item.title === title);
+  if (found) return found.node_token;
+  const body = { obj_type: "docx", node_type: "origin", title };
+  if (parent) body.parent_node_token = parent;
+  const made = await api(cfg, `/wiki/v2/spaces/${space}/nodes`, { method: "POST", body: JSON.stringify(body) });
+  const token = made.node?.node_token;
+  if (!token) fail(`创建知识库目录失败：${title}`);
+  return token;
+}
+
+async function uploadFileToWiki(cfg, filePath, parent, name) {
+  const info = await stat(filePath);
+  if (info.size === 0) fail("文件为空，无法上传。");
+  if (info.size > MAX_UPLOAD_BYTES) fail(`文件 ${(info.size / 1024 / 1024).toFixed(1)} MB，超过飞书 20 MB 上限。`);
+  const buffer = await readFile(filePath);
+  const token = await getToken(cfg);
+  const form = new FormData();
+  form.append("file_name", name);
+  form.append("parent_type", "explorer");
+  form.append("parent_node", "");
+  form.append("size", String(info.size));
+  form.append("file", new Blob([buffer]), name);
+  const uploaded = await request(
+    `${API}/drive/v1/files/upload_all`,
+    { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form },
+    true,
+  );
+  const fileToken = uploaded.file_token;
+  if (!fileToken) fail("上传成功但没有返回 file_token。");
+  const moveBody = { obj_type: "file", obj_token: fileToken };
+  if (parent) moveBody.parent_wiki_token = parent;
+  const moved = await api(cfg, `/wiki/v2/spaces/${spaceRoot(cfg)}/nodes/move_docs_to_wiki`, {
+    method: "POST",
+    body: JSON.stringify(moveBody),
+  });
+  let wikiToken = moved.wiki_token;
+  if (!wikiToken && moved.task_id) {
+    const node = await pollMoveTask(cfg, moved.task_id);
+    wikiToken = node?.node_token;
+  }
+  if (!wikiToken) fail("文件已上传但移入知识库超时，请稍后在知识库中确认。");
+  const host = String(uploaded.url ?? "").match(/^https:\/\/([^/]+)/)?.[1] ?? "feishu.cn";
+  return { wikiToken, objToken: fileToken, url: `https://${host}/wiki/${wikiToken}`, size: info.size, title: name };
+}
+
 async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
   try {
     if (req.method !== "POST") {
@@ -329,7 +405,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
       }
     }
 
-    const body = JSON.parse(await readJsonBody(req));
+    const body = JSON.parse(await readJsonBody(req, 30 * 1024 * 1024));
     const tool = (toolName) => {
       const found = ctx.tools.get(toolName);
       if (!found) throw new Error(`工具不可用：${toolName}`);
@@ -366,6 +442,48 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           chars: content.length,
           preview: content.slice(0, 240),
         };
+        break;
+      }
+      case "source.upload": {
+        const name = String(body.name ?? "上传资料").trim();
+        const ext = extname(name).toLowerCase();
+        if (![".docx", ".md", ".markdown", ".txt"].includes(ext)) {
+          throw new Error("只支持 .docx / .md / .markdown / .txt");
+        }
+        const raw = String(body.dataBase64 ?? "");
+        if (!raw) throw new Error("缺少文件内容");
+        const buffer = Buffer.from(raw, "base64");
+        if (buffer.length === 0) throw new Error("文件内容为空");
+        if (buffer.length > MAX_UPLOAD_BYTES) throw new Error("文件超过 20 MB，请压缩或拆分");
+
+        const tmp = join(tmpdir(), `jswj-src-${Date.now()}${ext}`);
+        await writeFile(tmp, buffer);
+        try {
+          const text = await extractSourceText(cfg, tmp, ext);
+          const taskId = String(body.taskId ?? "common");
+          const dir = join(homedir(), ".dsh", "jswj-sources", taskId);
+          await mkdir(dir, { recursive: true });
+          const textPath = join(dir, `${safeName(name, "资料")}.txt`);
+          await writeFile(textPath, text, "utf8");
+
+          const library = await ensureWikiChild(cfg, cfg.rootToken || "", "资料库");
+          const tierNode = await ensureWikiChild(cfg, library, String(body.tier || "未分级"));
+          const boardNode = await ensureWikiChild(cfg, tierNode, String(body.board || "未分类"));
+          const published = await uploadFileToWiki(cfg, tmp, boardNode, name);
+
+          value = {
+            ok: true,
+            title: name,
+            chars: text.length,
+            textPath,
+            preview: text.slice(0, 240),
+            url: published.url,
+            nodeToken: published.wikiToken,
+            library: "资料库",
+          };
+        } finally {
+          await unlink(tmp).catch(() => {});
+        }
         break;
       }
       case "font.status":

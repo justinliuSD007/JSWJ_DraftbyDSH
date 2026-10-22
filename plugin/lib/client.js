@@ -385,8 +385,20 @@ window.__ModuleLoader__.load({
       };
     }
 
-    function promptFor(task, step, extra) {
-      const names = stepsOf(task.flow);
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = String(reader.result || "");
+          const comma = result.indexOf(",");
+          resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = () => reject(new Error("读取文件失败"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function promptFor(task, step, extra) {      const names = stepsOf(task.flow);
       return [
         `【JSWJ 任务 ${task.id} · 第 ${step} 步：${names[step - 1]}】`,
         "请加载 jswj-draftbydsh 技能，先调用 jswj_task_get 读取该任务，再按任务数据完成这一步。",
@@ -477,6 +489,11 @@ window.__ModuleLoader__.load({
 
       const backStep = async () => {
         await savePatch({ step: Math.max(1, task.step - 1) });
+      };
+
+      const gotoStep = async (index) => {
+        if (!task || index >= task.step) return;
+        await savePatch({ step: index });
       };
 
       const handoff = async (step, extra) => {
@@ -710,8 +727,9 @@ window.__ModuleLoader__.load({
                 ),
                 form.attrs.archive === "polarion"
                   ? h("div", { style: s.field },
-                      h("label", { style: s.label }, "Polarion 项目空间"),
-                      h("input", { style: s.input, value: form.attrs.project || "", placeholder: "例如：GAC_A6_T4", onChange: setAttrs("project") }),
+                      h("label", { style: s.label }, "Polarion 项目空间 ID"),
+                      h("input", { style: s.input, value: form.attrs.project || "", placeholder: "例如：R06_T0（GAC_A6_T0 的项目 ID）", onChange: setAttrs("project") }),
+                      h("span", { style: s.mono }, "填 Polarion 的项目 ID，不是项目名称"),
                     )
                   : null,
               ),
@@ -748,6 +766,36 @@ window.__ModuleLoader__.load({
                   link: "",
                 });
               });
+            const upload = (event) => {
+              const file = event.target.files && event.target.files[0];
+              if (!file) return;
+              run(async () => {
+                const dataBase64 = await fileToBase64(file);
+                const uploaded = await call("source.upload", {
+                  name: file.name,
+                  dataBase64,
+                  tier: form.attrs.tier,
+                  board: form.attrs.board,
+                  taskId: task.id,
+                });
+                set({
+                  sources: [
+                    ...form.sources,
+                    {
+                      kind: "upload",
+                      url: uploaded.url,
+                      title: uploaded.title,
+                      ok: true,
+                      chars: uploaded.chars,
+                      textPath: uploaded.textPath,
+                      nodeToken: uploaded.nodeToken,
+                    },
+                  ],
+                });
+                setNotice(`已上传并留存到资料库：${uploaded.title}`);
+              });
+              event.target.value = "";
+            };
             const okCount = form.sources.filter((x) => x.ok).length;
             return h(
               "div",
@@ -755,12 +803,27 @@ window.__ModuleLoader__.load({
               h(
                 "div",
                 { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
-                h("input", { style: { ...s.input, flex: "1 1 320px" }, value: form.link || "", placeholder: "粘贴飞书云文档链接，回车或点「解析」", onChange: (e) => set({ link: e.target.value }) }),
+                h("input", { style: { ...s.input, flex: "1 1 300px" }, value: form.link || "", placeholder: "粘贴飞书云文档链接，回车或点「解析」", onChange: (e) => set({ link: e.target.value }) }),
                 h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: parse }, "解析"),
+                h(
+                  "label",
+                  {
+                    style: { ...s.btnSecondary, display: "inline-flex", alignItems: "center", cursor: busy ? "default" : "pointer" },
+                    title: "上传 docx / md，解析并留存到知识库资料库",
+                  },
+                  "上传 docx / md",
+                  h("input", {
+                    type: "file",
+                    accept: ".docx,.md,.markdown,.txt",
+                    style: { display: "none" },
+                    disabled: busy,
+                    onChange: upload,
+                  }),
+                ),
               ),
               h("div", { style: { ...s.list, marginTop: 12 } },
                 form.sources.length === 0
-                  ? h("div", { style: s.note }, "还没有参考资料。原文件请先上传到飞书云文档，再粘贴链接。")
+                  ? h("div", { style: s.note }, "还没有参考资料。粘贴飞书云文档链接，或上传 docx / md；上传的文件会解析并留存到 资料库/{层级}/{板块}/。")
                   : form.sources.map((item, i) =>
                       h(
                         "div",
@@ -770,7 +833,13 @@ window.__ModuleLoader__.load({
                           "div",
                           { style: s.rowMain },
                           h("div", { style: { fontSize: 13 } }, item.title || item.url),
-                          h("div", { style: s.mono }, item.ok ? `已解析 · ${item.chars} 字` : `解析失败：${item.error || ""}`),
+                          h(
+                            "div",
+                            { style: s.mono },
+                            item.ok
+                              ? `已解析 · ${item.chars} 字${item.kind === "upload" ? " · 已留存资料库" : ""}`
+                              : `解析失败：${item.error || ""}`,
+                          ),
                         ),
                         h(
                           "button",
@@ -780,7 +849,7 @@ window.__ModuleLoader__.load({
                       ),
                     ),
               ),
-              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除，不能以空结果继续。"),
+              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。上传的 docx / md 会同步为知识库文件节点，并抽出纯文本供助手读取。"),
               h(
                 "div",
                 { style: s.footer },
@@ -794,7 +863,7 @@ window.__ModuleLoader__.load({
                   },
                   "锁定来源",
                 ),
-                error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
               ),
             );
           }
@@ -1464,11 +1533,18 @@ window.__ModuleLoader__.load({
                 const index = i + 1;
                 const current = index === step;
                 const done = index < step || task.status === "completed";
+                const reachable = index < step;
                 return h(
                   "div",
                   {
                     key: name,
-                    style: { ...s.stepItem, ...(current ? s.stepCurrent : done ? s.stepDone : s.stepLocked) },
+                    title: reachable ? `回到第 ${index} 步「${name}」` : current ? "当前步骤" : "尚未到达",
+                    onClick: reachable ? () => gotoStep(index) : undefined,
+                    style: {
+                      ...s.stepItem,
+                      ...(current ? s.stepCurrent : done ? s.stepDone : s.stepLocked),
+                      cursor: reachable ? "pointer" : "default",
+                    },
                   },
                   h("span", { style: s.stepIndex }, done && !current ? "✓" : String(index).padStart(2, "0")),
                   h("span", null, name),

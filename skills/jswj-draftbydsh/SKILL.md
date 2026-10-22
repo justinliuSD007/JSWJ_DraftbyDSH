@@ -49,6 +49,8 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 任务文件在 `~/.dsh/jswj-tasks/<任务号>.json`，不要手工改；只通过工具读写。
 
+页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
+
 ## 知识库落位
 
 当前知识空间根级只有三份 docx：
