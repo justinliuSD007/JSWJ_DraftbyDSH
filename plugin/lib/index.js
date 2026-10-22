@@ -429,9 +429,32 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
       case "tasks.patch":
         value = await patchTask(String(body.id ?? ""), body.patch ?? {});
         break;
-      case "tasks.step":
-        value = await submitStep(String(body.id ?? ""), Number(body.step), body.data ?? {});
+      case "tasks.step": {
+        const updated = await submitStep(String(body.id ?? ""), Number(body.step), body.data ?? {});
+        let archivedSessions = 0;
+        if (updated.status === "completed") {
+          const registry = ctx.get("workspaceRegistry");
+          const sessions = updated.data?.sessions || {};
+          if (registry) {
+            for (const entry of Object.values(sessions)) {
+              const sessionId = entry && entry.sessionId;
+              if (!sessionId) continue;
+              try {
+                await registry.archiveSession(sessionId, { stopActivity: true });
+                archivedSessions += 1;
+              } catch {
+                /* 单个会话归档失败不阻塞任务完成 */
+              }
+            }
+          }
+        }
+        if (updated.status === "completed") {
+          await patchTask(updated.id, { archivedSessions });
+          updated.archivedSessions = archivedSessions;
+        }
+        value = { ...updated, archivedSessions };
         break;
+      }
       case "session.start": {
         const controller = ctx.get("sessionController");
         if (!controller) throw new Error("sessionController 不可用，无法新建会话");

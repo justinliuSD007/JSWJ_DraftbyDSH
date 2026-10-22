@@ -86,6 +86,7 @@ function inferMaxStep(task) {
 }
 
 function normalize(task) {
+  if (task.status === "completed" && !task.completedAt) task.completedAt = task.updatedAt;
   // 旧版起草流是 8 步（自检/修订独立），迁移到 7 步：6/7 -> 成稿确认，8 -> 出稿。
   if (task.flow === "draft" && task.stepsVersion !== 2) {
     const map = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 6, 8: 7 };
@@ -195,7 +196,7 @@ export async function patchTask(id, patch = {}) {
   if (patch.data && typeof patch.data === "object") {
     task.data = { ...task.data, ...patch.data };
   }
-  for (const key of ["step", "status"]) {
+  for (const key of ["step", "status", "completedAt", "archivedSessions"]) {
     if (patch[key] !== undefined) task[key] = patch[key];
   }
   if (patch.step !== undefined) {
@@ -274,6 +275,7 @@ export async function submitStep(id, step, data) {
   if (merged.step > stepsOf(task.flow).length) {
     merged.step = stepsOf(task.flow).length;
     merged.status = "completed";
+    merged.completedAt = stamp();
   }
   merged.maxStep = Math.max(Number(task.maxStep) || 1, merged.step);
   merged.updatedAt = stamp();

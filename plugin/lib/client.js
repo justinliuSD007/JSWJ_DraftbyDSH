@@ -517,6 +517,23 @@ window.__ModuleLoader__.load({
         setScreen("list");
       };
 
+      const fmtTime = (value) => {
+        if (!value) return "-";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN", { hour12: false });
+      };
+
+      const humanDuration = (start, end) => {
+        const from = new Date(start).getTime();
+        const to = new Date(end).getTime();
+        if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return "-";
+        const minutes = Math.max(1, Math.round((to - from) / 60000));
+        if (minutes < 60) return `${minutes} 分钟`;
+        const hours = Math.floor(minutes / 60);
+        const rest = minutes % 60;
+        return `${hours} 小时${rest ? ` ${rest} 分` : ""}`;
+      };
+
       const newTask = async (flow) => {
         await run(async () => {
           const created = await call("tasks.create", { flow });
@@ -749,6 +766,18 @@ window.__ModuleLoader__.load({
       const names = stepsOf(flow);
       const step = Number(task.step);
       const reached = Number(task.maxStep ?? task.step);
+      const completedAt = task.completedAt || task.updatedAt;
+      const revisionCount =
+        flow === "draft" ? Math.max(0, Number(form.draft?.version || 1) - 1) : (form.review?.issues || []).length;
+      const sessionCount = Object.keys(task.data?.sessions || form.sessions || {}).length;
+      const archivedCount = Number(task.archivedSessions ?? 0);
+      const stat = (label, value) =>
+        h(
+          "div",
+          { style: { ...s.field, padding: "10px 12px", border: `1px solid ${C.line}`, borderRadius: 8 } },
+          h("div", { style: { ...s.mono, marginBottom: 4 } }, label),
+          h("div", { style: { fontSize: 15, fontWeight: 600, color: C.text } }, value),
+        );
       const title = task.data?.basic?.name || "未命名";
       const set = (patch) => setForm((current) => ({ ...current, ...patch }));
       const growHeight = (el) => {
@@ -1943,10 +1972,31 @@ window.__ModuleLoader__.load({
                       { style: s.cardDesc },
                       flow === "review" ? "预审意见已处置并归档，流程结束。" : "文档已出稿并落到知识库，流程结束。",
                     ),
+                    h(
+                      "div",
+                      { style: { ...s.grid, marginTop: 12 } },
+                      stat("总耗时", humanDuration(task.createdAt, completedAt)),
+                      stat(flow === "draft" ? "修订次数" : "意见条数", flow === "draft" ? `${revisionCount} 次` : `${revisionCount} 条`),
+                      stat("开始时间", fmtTime(task.createdAt)),
+                      stat("完成时间", fmtTime(completedAt)),
+                      stat("参考资料", `${(form.sources || []).length} 份`),
+                      stat("相关会话", `${sessionCount} 个${archivedCount ? " · 已归档" : ""}`),
+                    ),
                     flow === "draft" && form.publish?.url
-                      ? h("div", { style: s.note }, "出稿文件：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
+                      ? h(
+                          "div",
+                          { style: { ...s.note, marginTop: 12 } },
+                          form.publish?.title ? `出稿文件：${form.publish.title}　` : "出稿文件：",
+                          h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url),
+                        )
                       : null,
-                    h("div", { style: s.note }, "需要再改时，可从任务列表重新打开；已出稿的版本不会自动覆盖。"),
+                    h(
+                      "div",
+                      { style: s.note },
+                      archivedCount
+                        ? `本任务相关会话已归档（${archivedCount} 个），可在侧栏归档列表查看。`
+                        : "任务已结束；需要再改时从任务列表重新打开，已出稿版本不会自动覆盖。",
+                    ),
                     h(
                       "div",
                       { style: s.footer },
