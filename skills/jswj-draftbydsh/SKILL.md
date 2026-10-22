@@ -51,6 +51,8 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
 
+第 7 步修订：按任务里的 `revision.items` 逐条修改正文，只改指定位置，不整体润色、不补写整节；完成后把 `selfcheck` 置为待检查、`revision.round` 加 1、`revision.confirmed` 置 false，并写回任务。用户回第 6 步重新自检。
+
 ## 知识库落位
 
 当前知识空间根级只有三份 docx：

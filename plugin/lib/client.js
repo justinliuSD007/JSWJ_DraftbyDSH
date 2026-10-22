@@ -1093,7 +1093,7 @@ window.__ModuleLoader__.load({
                   promptFor(
                     task,
                     7,
-                    "按 revision.items 逐条执行定向修订，只改意见指出的位置，不整体润色、不补写整节；完成后更新 selfcheck 与 revision.round，并写回任务。",
+                    "按 revision.items 逐条执行定向修订，只改意见指出的位置，不整体润色、不补写整节；完成后更新 selfcheck 与 revision.round，把 revision.confirmed 置 false，并写回任务。",
                   ),
                   sessionTitleFor(7),
                   task.id,
