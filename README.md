@@ -31,8 +31,8 @@ skills/jswj-draftbydsh/      Skill：业务流、门禁、出稿规范、任务�
 
 ## 安装
 
-前置：DSH 桌面端；Python 3 + `python-docx`（DSH 自带运行时已包含）；飞书自建应用具备
-`wiki:wiki`、`drive:file:upload`、`wiki:node:move`，并已加入知识空间。
+前置：DSH 桌面端；Python 3 + `python-docx`（DSH 自带运行时已包含）；飞书应用「GO秘」的
+`appId` / `appSecret`（向应用管理员获取）；当前知识库权限已统一开通。
 
 1. **打包**
 

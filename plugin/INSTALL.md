@@ -5,17 +5,8 @@
 ## 一、前置条件
 
 - DSH 桌面端已安装并能正常打开。
-- 一个飞书自建应用（由你或管理员创建），并开通以下权限：
-  - `wiki:wiki`：知识库节点读写
-  - `drive:file:upload`：上传 Word 文件
-  - `wiki:node:move`：把上传文件移入知识库
-  - `bitable:app`：可选，任务总结写入多维表格时需要
-- 该应用已被加入目标知识空间，并有草稿库、出稿库、资料库的编辑权限。
-- 目标知识空间中已存在：
-  - `技术资料草稿库`（草稿与预览）
-  - `资料库`（参考资料留存）
-  - `出稿库`（正式出稿，首次出稿会自动创建）
-  - 可选：`文件起草工作总结` 多维表格
+- 获取飞书应用「GO秘」的详细信息：`appId`、`appSecret`（向应用管理员获取）。
+- 当前知识库的访问权限已统一开通，无需自行创建知识空间或调整节点权限。
 
 ## 二、安装包内容
 
@@ -56,21 +47,9 @@ jswj-draft/
 %USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml
 ```
 
-按实际环境填写：
-
-| 字段 | 说明 |
-|---|---|
-| `appId` / `appSecret` | 飞书自建应用凭据；不要使用别人的 secret |
-| `spaceId` | 知识空间 ID |
-| `draftRootToken` | 「技术资料草稿库」节点 token |
-| `rootToken` | 知识空间根节点 token，可留空自动查找 |
-| `wikiBaseUrl` | 你的飞书租户域名，例如 `https://abc.feishu.cn` |
-| `wikiHomeUrl` | 使用指南首页的完整链接 |
-| `summaryWikiToken` | 可选，任务总结多维表格的 wiki 节点 token |
-| `pythonPath` | 可选，留空使用 DSH 自带 Python |
-| `outputDir` | 可选，Word 临时目录，默认 `~/.dsh/jswj-out` |
-
-节点 token 可以从飞书知识库链接里取：`https://xxx.feishu.cn/wiki/<node_token>`。
+- `appId` / `appSecret`：填飞书应用「GO秘」的详细信息。
+- `spaceId`、`draftRootToken`、`wikiBaseUrl`、`wikiHomeUrl`、`summaryWikiToken`：当前知识库已统一配置，通常无需修改。
+- `pythonPath` / `outputDir`：留空即可。
 
 > 安全要求：`appSecret` 只放在本机 profile 配置里，不要写进安装包、仓库或聊天记录。
 
@@ -110,12 +89,11 @@ skills\jswj-draftbydsh  →  %USERPROFILE%\.dsh\skills\jswj-draftbydsh
 | 现象 | 处理 |
 |---|---|
 | 页面没有「技术文件起草」 | 确认 bundle 已启用并重载 DSH |
-| `jswj_ping` 报凭据错误 | 检查 appId/appSecret，确认应用未停用 |
-| 报权限拒绝 `131006` | 把应用加入知识空间，并给草稿库、资料库、出稿库编辑权限 |
+| `jswj_ping` 报凭据错误 | 检查「GO秘」的 appId/appSecret，确认应用未停用 |
 | 上传报 20 MB 限制 | 压缩图片或拆分文件 |
 | 页面提示字体缺失 | 安装 HarmonyOS Sans SC；字体有授权限制，不随安装包分发 |
-| 出稿库没有文件 | 确认第 2 步归档位置选的是飞书审批或 Polarion，并检查应用是否有出稿库权限 |
-| 任务总结没有写入多维表格 | 检查 `summaryWikiToken`，并确认应用有多维表格编辑权限 |
+| 出稿库没有文件 | 确认第 2 步归档位置选的是飞书审批或 Polarion |
+| 任务总结没有写入多维表格 | 检查 `summaryWikiToken` 配置 |
 
 ## 九、升级与卸载
 
