@@ -635,14 +635,21 @@ window.__ModuleLoader__.load({
 
       const removeTask = async (id) => {
         await run(async () => {
-          await call("tasks.delete", { id });
+          const result = await call("tasks.delete", { id });
+          const cleanup = result.cleanup || {};
           setConfirmId("");
           if (task && task.id === id) {
             setTask(null);
             setScreen("list");
           }
           setTasks(await call("tasks.list"));
-          setNotice(`已删除任务 ${id}`);
+          setNotice(
+            `已删除任务 ${id}${
+              cleanup.files || cleanup.wikiDrafts || cleanup.sessions
+                ? `（清理草稿文件 ${cleanup.files || 0} 个、预览稿 ${cleanup.wikiDrafts || 0} 个、归档会话 ${cleanup.sessions || 0} 个）`
+                : ""
+            }`,
+          );
         });
       };
 
@@ -1957,7 +1964,7 @@ window.__ModuleLoader__.load({
             ? h(
                 "div",
                 { style: s.dangerBar },
-                h("span", null, `删除任务 ${task.id}？删除后不可恢复；已出稿文件与上传资料不会被删除。`),
+                h("span", null, `删除任务 ${task.id}？会同时删除本地草稿/预览文件、未完成的预览稿，并归档相关会话；已出稿文件与参考资料原文件保留。`),
                 h("button", { style: { ...s.btnSecondary, borderColor: C.err, color: C.err }, onClick: () => removeTask(task.id) }, "确认删除"),
                 h("button", { style: s.btnSecondary, onClick: () => setConfirmId("") }, "取消"),
               )

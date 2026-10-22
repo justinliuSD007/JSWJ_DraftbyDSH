@@ -23,11 +23,11 @@ try {
   defineTool = (spec) => spec;
 }
 
-const { stat, mkdir, writeFile, unlink, readFile, readdir, copyFile } = await import("node:fs/promises");
+const { stat, mkdir, writeFile, unlink, readFile, readdir, copyFile, rm } = await import("node:fs/promises");
 const { execFile } = await import("node:child_process");
 const { promisify } = await import("node:util");
 const { fileURLToPath } = await import("node:url");
-const { join, basename, isAbsolute, extname, dirname } = await import("node:path");
+const { join, basename, isAbsolute, extname, dirname, resolve, sep } = await import("node:path");
 const { homedir, tmpdir } = await import("node:os");
 
 import { createTask, deleteTask, getTask, listTasks, patchTask, stepsOf, submitStep } from "./tasks.js";
@@ -577,7 +577,10 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const render = await tool("jswj_render_docx").execute(renderArgs, {});
         const published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
 
-        await patchTask(task.id, { data: { draft: { ...draft, markdown, version, previewVersion: version, url: published.url, nodeToken: published.wikiToken } } });
+        await patchTask(task.id, {
+          data: { draft: { ...draft, markdown, version, previewVersion: version, url: published.url, nodeToken: published.wikiToken } },
+          artifacts: [...(task.artifacts ?? []), render.path],
+        });
         value = {
           url: published.url,
           nodeToken: published.wikiToken,
@@ -605,6 +608,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           Boolean(oldToken) && Number(draft.previewVersion) === Number(draft.version) && Boolean(draft.url);
 
         let published = null;
+        let renderedPath = "";
         if (canRename) {
           try {
             await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}/nodes/${oldToken}/update_title`, {
@@ -621,6 +625,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           const renderArgs = { markdown, title: baseName };
           if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
           const render = await tool("jswj_render_docx").execute(renderArgs, {});
+          renderedPath = render.path;
           published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
 
           if (oldToken && oldToken !== published.wikiToken) {
@@ -650,6 +655,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             },
             draft: { ...draft, url: published.url, nodeToken: published.wikiToken },
           },
+          artifacts: [...(task.artifacts ?? []), ...(renderedPath ? [renderedPath] : [])],
         });
         value = {
           url: published.url,
@@ -667,9 +673,13 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         value = { ...task, summarySync };
         break;
       }
-      case "tasks.delete":
-        value = await deleteTask(String(body.id ?? ""));
+      case "tasks.delete": {
+        const id = String(body.id ?? "");
+        const task = await getTask(id);
+        const cleanup = await cleanupTaskArtifacts(cfg, ctx, task);
+        value = { ...(await deleteTask(id)), cleanup };
         break;
+      }
       case "doc.read": {
         const doc = await tool("jswj_doc_read").execute({ target: String(body.target ?? "") }, {});
         const content = String(doc.content ?? "");
@@ -910,6 +920,66 @@ async function syncSummary(cfg, task) {
     body: JSON.stringify({ fields }),
   });
   return { ok: true, updated: false, recordId: created?.record?.record_id ?? "", appToken, tableId };
+}
+
+async function deleteWikiFileNode(cfg, token) {
+  try {
+    const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(token)}`);
+    const obj = node?.node?.obj_token;
+    if (!obj) return false;
+    await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}/nodes/${obj}`, {
+      method: "DELETE",
+      body: JSON.stringify({ obj_type: "file", include_children: true }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 删除任务时清理它产生的半成品：本地资料目录、渲染草稿、预览稿节点，并归档会话。 */
+async function cleanupTaskArtifacts(cfg, ctx, task) {
+  const result = { sourceDir: false, files: 0, wikiDrafts: 0, sessions: 0 };
+  try {
+    await rm(join(homedir(), ".dsh", "jswj-sources", task.id), { recursive: true, force: true });
+    result.sourceDir = true;
+  } catch {
+    /* 目录不存在或不可删，继续 */
+  }
+
+  const roots = [resolve(join(homedir(), ".dsh", "jswj-out"))];
+  if (cfg.outputDir) roots.push(resolve(String(cfg.outputDir)));
+  for (const artifact of task.artifacts ?? []) {
+    try {
+      const abs = resolve(String(artifact));
+      if (!roots.some((root) => abs === root || abs.startsWith(`${root}${sep}`))) continue;
+      await unlink(abs);
+      result.files += 1;
+    } catch {
+      /* 已不存在的临时文件忽略 */
+    }
+  }
+
+  const draftToken = task.data?.draft?.nodeToken;
+  const publishToken = task.data?.publish?.nodeToken;
+  if (task.status !== "completed" && draftToken && draftToken !== publishToken) {
+    if (await deleteWikiFileNode(cfg, draftToken)) result.wikiDrafts = 1;
+  }
+
+  const registry = ctx.get("workspaceRegistry");
+  if (registry) {
+    for (const entry of Object.values(task.data?.sessions ?? {})) {
+      const sessionId = entry && entry.sessionId;
+      if (!sessionId) continue;
+      try {
+        await registry.archiveSession(sessionId, { stopActivity: true });
+        result.sessions += 1;
+      } catch {
+        /* 单个会话归档失败不阻塞删除 */
+      }
+    }
+  }
+  return result;
 }
 
 function apply(ctx, config = {}) {

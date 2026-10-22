@@ -163,6 +163,7 @@ export async function createTask(flow) {
     maxStep: 1,
     stepsVersion: flow === "draft" ? 2 : undefined,
     status: "active",
+    artifacts: [],
     createdAt: stamp(),
     updatedAt: stamp(),
     data: {
@@ -196,7 +197,7 @@ export async function patchTask(id, patch = {}) {
   if (patch.data && typeof patch.data === "object") {
     task.data = { ...task.data, ...patch.data };
   }
-  for (const key of ["step", "status", "completedAt", "archivedSessions", "summarySync"]) {
+  for (const key of ["step", "status", "completedAt", "archivedSessions", "summarySync", "artifacts"]) {
     if (patch[key] !== undefined) task[key] = patch[key];
   }
   if (patch.step !== undefined) {
