@@ -487,6 +487,7 @@ window.__ModuleLoader__.load({
       const [font, setFont] = React.useState({ loading: true });
       const [confirmId, setConfirmId] = React.useState("");
       const [updateInfo, setUpdateInfo] = React.useState(null);
+      const [health, setHealth] = React.useState({ loading: true });
 
       const loadTasks = async () => {
         try {
@@ -501,6 +502,9 @@ window.__ModuleLoader__.load({
         call("font.status")
           .then((status) => setFont({ ...status, loading: false }))
           .catch(() => setFont({ loading: false, installed: false, sourceAvailable: false }));
+        call("health.check")
+          .then((result) => setHealth({ ...result, loading: false }))
+          .catch((err) => setHealth({ loading: false, ok: false, issues: [String((err && err.message) || err)], warnings: [] }));
       }, []);
 
       React.useEffect(() => {
@@ -634,6 +638,14 @@ window.__ModuleLoader__.load({
         });
       };
 
+      const checkHealth = async () => {
+        await run(async () => {
+          const result = await call("health.check");
+          setHealth({ ...result, loading: false });
+          setNotice(result.ok ? "插件自检通过" : `插件自检发现 ${result.issues.length} 项问题`);
+        });
+      };
+
       const checkUpdate = async () => {
         await run(async () => {
           const info = await call("update.check");
@@ -692,9 +704,25 @@ window.__ModuleLoader__.load({
                 "div",
                 { style: s.actionsRow },
                 h("button", { style: s.btnSecondary, onClick: () => run(loadTasks) }, "刷新"),
+                h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: checkHealth }, "插件自检"),
                 h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: checkUpdate }, "检查更新"),
               ),
             ),
+            !health.loading && ((health.issues || []).length || (health.warnings || []).length)
+              ? h(
+                  "div",
+                  { style: { ...s.envBar, borderColor: (health.issues || []).length ? C.err : C.warn } },
+                  h("span", { style: s.envLabel }, "插件自检"),
+                  h(
+                    "span",
+                    { style: { color: (health.issues || []).length ? C.err : C.warn } },
+                    (health.issues || []).length ? `发现 ${health.issues.length} 项问题` : "有提醒",
+                  ),
+                  (health.issues || []).map((item, index) => h("span", { key: `e-${index}`, style: { ...s.envHint, color: C.err } }, item)),
+                  (health.warnings || []).map((item, index) => h("span", { key: `w-${index}`, style: { ...s.envHint, color: C.warn } }, item)),
+                  h("button", { style: s.btnSmall, disabled: busy, onClick: checkHealth }, "重新自检"),
+                )
+              : null,
             updateInfo
               ? h(
                   "div",

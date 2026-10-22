@@ -678,6 +678,9 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         };
         break;
       }
+      case "health.check":
+        value = await healthCheck(cfg);
+        break;
       case "update.check":
         value = await checkUpdate(cfg);
         break;
@@ -1194,6 +1197,86 @@ async function downloadUpdate(cfg, version) {
   const file = join(dir, info.asset?.name || `jswj-draft-${version || info.latest}.zip`);
   await writeFile(file, buffer);
   return { ok: true, path: file, version: info.latest, url: info.url, size: buffer.length };
+}
+
+async function healthCheck(cfg) {
+  const checks = {
+    appId: Boolean(String(cfg.appId ?? "").trim()),
+    appSecret: Boolean(String(cfg.appSecret ?? "").trim()),
+    space: false,
+    spaceName: "",
+    draftRoot: false,
+    python: false,
+    template: false,
+    skill: false,
+    summary: false,
+  };
+  const issues = [];
+  const warnings = [];
+
+  if (!checks.appId || !checks.appSecret) {
+    issues.push("飞书应用 APP ID / Secret 未配置");
+  }
+
+  if (checks.appId && checks.appSecret && cfg.spaceId) {
+    try {
+      const space = await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}`);
+      checks.space = true;
+      checks.spaceName = space?.space?.name ?? "";
+    } catch {
+      issues.push("知识空间不可访问，请检查 spaceId 与应用权限");
+    }
+  } else if (!cfg.spaceId) {
+    issues.push("知识空间 spaceId 未配置");
+  }
+
+  if (checks.space) {
+    try {
+      if (cfg.draftRootToken) {
+        await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(cfg.draftRootToken)}`);
+        checks.draftRoot = true;
+      } else {
+        const roots = await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}/nodes?page_size=50`);
+        const found = (roots.items ?? []).find((node) => node.title === "技术资料草稿库");
+        checks.draftRoot = Boolean(found);
+      }
+      if (!checks.draftRoot) issues.push("未找到「技术资料草稿库」节点");
+    } catch {
+      issues.push("草稿库节点不可访问，请检查 draftRootToken");
+    }
+  }
+
+  try {
+    await pickPython(cfg);
+    checks.python = true;
+  } catch {
+    issues.push("Python 运行时不可用");
+  }
+
+  try {
+    checks.template = (await stat(packageFile("template/GY-F003-cleaned.docx"))).isFile();
+    if (!checks.template) issues.push("GY-F003 模板缺失");
+  } catch {
+    issues.push("GY-F003 模板缺失");
+  }
+
+  try {
+    checks.skill = (await stat(join(homedir(), ".dsh", "skills", "jswj-draftbydsh", "SKILL.md"))).isFile();
+    if (!checks.skill) warnings.push("Skill 尚未写入本机技能目录，重载 DSH 后会自动安装");
+  } catch {
+    warnings.push("Skill 尚未写入本机技能目录，重载 DSH 后会自动安装");
+  }
+
+  if (cfg.summaryWikiToken) {
+    try {
+      await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(cfg.summaryWikiToken)}`);
+      checks.summary = true;
+    } catch {
+      warnings.push("总结多维表格不可访问，任务完成时不会写入总结");
+    }
+  }
+
+  return { ok: issues.length === 0, checks, issues, warnings };
 }
 
 function apply(ctx, config = {}) {
