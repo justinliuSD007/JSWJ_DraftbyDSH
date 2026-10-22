@@ -66,16 +66,44 @@ export async function listTasks() {
   return tasks.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
+/** 由已有数据推断达到过的最高步骤，兼容没有 maxStep 的旧任务。 */
+function inferMaxStep(task) {
+  const d = task.data || {};
+  let n = Number(task.step) || 1;
+  if (task.flow === "review") {
+    if (d.review?.archived) n = Math.max(n, 5);
+    if ((d.review?.issues ?? []).length) n = Math.max(n, 4);
+    if (d.review?.file?.ok) n = Math.max(n, 3);
+    if (d.review?.checklist) n = Math.max(n, 2);
+  } else {
+    if (d.publish?.url) n = Math.max(n, 8);
+    if ((d.revision?.items ?? []).length || d.revision?.confirmed) n = Math.max(n, 7);
+    if (d.selfcheck?.status && d.selfcheck.status !== "pending") n = Math.max(n, 6);
+    if (d.generation?.status === "done") n = Math.max(n, 5);
+    if ((d.outline?.chapters ?? []).length) n = Math.max(n, 4);
+    if ((d.sources ?? []).length) n = Math.max(n, 3);
+    if (d.attrs?.tier) n = Math.max(n, 2);
+  }
+  return n;
+}
+
+function normalize(task) {
+  if (!task.maxStep) task.maxStep = inferMaxStep(task);
+  return task;
+}
+
 function summarize(task) {
+  normalize(task);
   return {
     id: task.id,
     flow: task.flow,
-    step: task.step,
+    step: task.maxStep,
+    maxStep: task.maxStep,
     status: task.status,
     title: task.data?.basic?.name || task.data?.review?.file?.title || "未命名",
     updatedAt: task.updatedAt,
     createdAt: task.createdAt,
-    stepName: stepsOf(task.flow)[task.step - 1] ?? "已完成",
+    stepName: stepsOf(task.flow)[task.maxStep - 1] ?? "已完成",
     pending: isPending(task),
   };
 }
@@ -84,12 +112,13 @@ function summarize(task) {
 function isPending(task) {
   if (task.status !== "active") return false;
   const d = task.data || {};
+  const reached = task.maxStep ?? task.step;
   if (task.flow === "review") {
     const issues = d.review?.issues ?? [];
-    return task.step >= 4 && issues.some((item) => !item.decision);
+    return reached >= 4 && issues.some((item) => !item.decision);
   }
   if (task.flow === "draft") {
-    return task.step === 6 && (d.selfcheck?.items ?? []).length > 0;
+    return reached === 6 && (d.selfcheck?.items ?? []).length > 0;
   }
   return false;
 }
@@ -97,7 +126,7 @@ function isPending(task) {
 export async function getTask(id) {
   const task = await readJson(id);
   if (!task) throw new Error(`任务不存在：${id}`);
-  return task;
+  return normalize(task);
 }
 
 /** 删除任务记录。已出稿的文档与已上传的资料不会被删除。 */
@@ -125,6 +154,7 @@ export async function createTask(flow) {
     id,
     flow,
     step: 1,
+    maxStep: 1,
     status: "active",
     createdAt: stamp(),
     updatedAt: stamp(),
@@ -160,6 +190,10 @@ export async function patchTask(id, patch = {}) {
   for (const key of ["step", "status"]) {
     if (patch[key] !== undefined) task[key] = patch[key];
   }
+  if (patch.step !== undefined) {
+    task.maxStep = Math.max(Number(task.maxStep) || 1, Number(patch.step) || 1);
+  }
+  task.maxStep = Math.max(Number(task.maxStep) || 1, Number(task.step) || 1);
   task.updatedAt = stamp();
   await writeFile(join(DIR, `${id}.json`), JSON.stringify(task, null, 2), "utf8");
   return task;
@@ -236,6 +270,7 @@ export async function submitStep(id, step, data) {
     merged.step = stepsOf(task.flow).length;
     merged.status = "completed";
   }
+  merged.maxStep = Math.max(Number(task.maxStep) || 1, merged.step);
   merged.updatedAt = stamp();
   await writeFile(join(DIR, `${id}.json`), JSON.stringify(merged, null, 2), "utf8");
   return merged;

@@ -532,7 +532,8 @@ window.__ModuleLoader__.load({
       };
 
       const gotoStep = async (index) => {
-        if (!task || index >= task.step) return;
+        const reached = Number(task?.maxStep ?? task?.step ?? 1);
+        if (!task || index > reached || index === task.step) return;
         await savePatch({ step: index });
       };
 
@@ -713,6 +714,7 @@ window.__ModuleLoader__.load({
       const flow = task.flow;
       const names = stepsOf(flow);
       const step = Number(task.step);
+      const reached = Number(task.maxStep ?? task.step);
       const title = task.data?.basic?.name || "未命名";
       const set = (patch) => setForm((current) => ({ ...current, ...patch }));
       const growHeight = (el) => {
@@ -1653,17 +1655,23 @@ window.__ModuleLoader__.load({
               "aside",
               { style: s.rail },
               h("div", { style: s.railTitle }, title),
-              h("div", { style: s.railMeta }, `${flow === "review" ? "技术资料预审" : "技术文件起草"} · ${step}/${names.length}`),
+              h(
+                "div",
+                { style: s.railMeta },
+                `${flow === "review" ? "技术资料预审" : "技术文件起草"} · ${step}/${names.length}${
+                  reached > step ? ` · 已推进到 ${reached}` : ""
+                }`,
+              ),
               names.map((name, i) => {
                 const index = i + 1;
                 const current = index === step;
-                const done = index < step || task.status === "completed";
-                const reachable = index < step;
+                const done = index <= reached && !current;
+                const reachable = index <= reached && !current;
                 return h(
                   "div",
                   {
                     key: name,
-                    title: reachable ? `回到第 ${index} 步「${name}」` : current ? "当前步骤" : "尚未到达",
+                    title: current ? "当前步骤" : reachable ? `查看第 ${index} 步「${name}」` : "尚未到达",
                     onClick: reachable ? () => gotoStep(index) : undefined,
                     style: {
                       ...s.stepItem,
@@ -1671,7 +1679,7 @@ window.__ModuleLoader__.load({
                       cursor: reachable ? "pointer" : "default",
                     },
                   },
-                  h("span", { style: s.stepIndex }, done && !current ? "✓" : String(index).padStart(2, "0")),
+                  h("span", { style: s.stepIndex }, current ? String(index).padStart(2, "0") : done ? "✓" : String(index).padStart(2, "0")),
                   h("span", null, name),
                 );
               }),
