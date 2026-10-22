@@ -4,29 +4,31 @@
 
 ## 能力
 
-- 两条业务流：起草 8 步、预审 5 步，每步有门禁，不跳步。
+- **分步任务向导**：起草 D1–D8、预审 R1–R5，每步一个决策，门禁不过不能推进。
+- 任务状态存 Host（`~/.dsh/jswj-tasks`），刷新、重开、换会话都不丢。
 - 知识库读写：列节点、读正文、建节点、追加段落。
 - Word 出稿：Markdown → 套用 GY-F003 模板的 `.docx`，封面、页眉、章节、表格自动处理。
-- 发布：`.docx` 上传后作为**文件节点**移入知识库，保留 Word 原文件，返回节点链接。
-- 可交互页面：填表 → 新建会话 → 投递结构化指令 → 自动切到对话，另有「复制指令」「打开知识库」。
+- 发布：`.docx` 上传后作为文件节点移入知识库，返回节点链接。
+- 生成 / 自检 / 预审 / 修订交给助手执行，助手用任务工具写回结果，页面继续推进。
 
 ## 仓库结构
 
 ```
-plugin/                      DSH bundle（服务端工具 + 客户端页面）
-├── lib/index.js             7 个工具
-├── lib/client.js            整页视图 + 侧边栏入口
+plugin/                      DSH bundle
+├── lib/index.js             9 个工具 + /api/jswj 页面数据通道
+├── lib/tasks.js             任务存储与门禁
+├── lib/client.js            D1–D8 / R1–R5 分步向导
 ├── python/render_docx.py    Markdown → GY-F003 Word
 ├── template/                清理版模板
 ├── cordis.patch.yml         插入 jswj-draft 条目（不含凭据）
-└── README.md                安装、配置、权限、限制
-skills/jswj-draftbydsh/      Skill：两条业务流、门禁、出稿规范、失败降级
+└── README.md
+skills/jswj-draftbydsh/      Skill：业务流、门禁、出稿规范、任务写回
 ```
 
 ## 安装
 
-前置条件：DSH 桌面端；Python 3 + `python-docx`（DSH 自带运行时已包含）；飞书自建应用具备
-`wiki:wiki`、`drive:file:upload`、`wiki:node:move`，并已加入知识空间成为成员。
+前置：DSH 桌面端；Python 3 + `python-docx`（DSH 自带运行时已包含）；飞书自建应用具备
+`wiki:wiki`、`drive:file:upload`、`wiki:node:move`，并已加入知识空间。
 
 1. **安装插件**
 
@@ -34,7 +36,7 @@ skills/jswj-draftbydsh/      Skill：两条业务流、门禁、出稿规范、�
    plugin_manager action=install_bundle target=<本仓库>/plugin
    ```
 
-2. **配置**（`~/.dsh/profiles/desktop/cordis.patch.yml`，config 为整体替换）
+2. **配置**（`~/.dsh/profiles/desktop/cordis.patch.yml`）
 
    ```yaml
    - id: jswj-draft
@@ -48,48 +50,45 @@ skills/jswj-draftbydsh/      Skill：两条业务流、门禁、出稿规范、�
        outputDir: ""
    ```
 
-   也可用环境变量 `JSWJ_APP_ID`、`JSWJ_APP_SECRET`、`JSWJ_SPACE_ID`、
-   `JSWJ_ROOT_TOKEN`、`JSWJ_DRAFT_ROOT_TOKEN`、`JSWJ_PYTHON`。
-
 3. **安装 Skill**
 
-   把 `skills/jswj-draftbydsh/` 复制到 `~/.dsh/skills/`。目录被监听，无需重启。
+   把 `skills/jswj-draftbydsh/` 复制到 `~/.dsh/skills/`。
 
-4. **自检**
+4. **使用**
 
-   调用 `jswj_ping`，确认空间名、根节点、Python 与模板均正常。
+   左侧「技术文件起草」→ 新建技术文件 / 新建预审 → 按步骤推进。
 
 ## 工具
 
 | 工具 | 作用 |
 |---|---|
-| `jswj_ping` | 凭据、知识空间、Python、模板自检 |
-| `jswj_wiki_list` | 列出节点下的子节点 |
+| `jswj_ping` | 凭据、空间、Python、模板自检 |
+| `jswj_wiki_list` | 列出子节点 |
 | `jswj_doc_read` | 读取在线文档正文 |
 | `jswj_wiki_create` | 新建 docx 节点 |
-| `jswj_doc_append` | 向文档追加文本段落 |
+| `jswj_doc_append` | 追加文本段落 |
 | `jswj_render_docx` | Markdown → GY-F003 Word |
-| `jswj_publish_docx` | .docx 上传并移入知识库 |
+| `jswj_publish_docx` | 上传并移入知识库 |
+| `jswj_task_get` | 读取任务状态 |
+| `jswj_task_update` | 写回生成 / 自检 / 预审 / 修订结果 |
 
 ## 验证状态
 
-- `node --check` 两个入口通过。
-- 自测覆盖 ping → 列节点 → 读模板 → 渲染 176 KB Word → 上传 → 移入知识库 → 返回链接，测试节点已清理。
-- `main`（key `jswj-draft`）与 `sidebar.panellist`（id `jswj-draft`）槽位注册为 `active`。
-- 页面交互通过 `ctx.remote.session.create/prompt` + `ctx.uiWorkspace.openSession` 实现；
-  模块加载与槽位注册已验证，按钮点击链路待人工点一次确认。
-- 实机工具通道调用 `jswj_ping` 成功：空间名「技术资料起草库」、三个根节点、出稿父节点、
-  Python 与模板状态均正确，证明凭据由 profile 覆盖层生效。
-- 浏览器中的实际视觉呈现未做自动化截图验证。
+- `node --check` 入口通过；11 个文件语法检查通过。
+- 页面数据通道 `POST /api/jswj` 实测：任务创建、门禁拒绝、逐步推进、发布、清理全部通过。
+- 起草 D1–D8 与预审 R1–R5 通过接口完整跑通，出稿节点生成后已删除。
+- 插件工具通道调用 `jswj_ping` 成功，凭据由 profile 覆盖层生效。
+- 页面按钮的真实点击链路尚未在浏览器中自动化验证。
 
 ## 安全
 
 - 仓库不保存 `appSecret`；`plugin/cordis.patch.yml` 只留空占位。
-- 自测脚本从环境变量读取凭据，不硬编码。
-- PAT 不入库；GitHub 凭据仅在本机注入。
+- 页面接口仅接受同源 `POST`，要求 `x-jswj: 1` 头。
+- 任务文件只存业务数据，不含凭据。
 
 ## 已知限制
 
-- 单文件 ≤ 20 MB（飞书 `upload_all` 上限）。
-- 只读取 docx 在线文档；`file` 类型节点无法读正文。
-- 模板结构变化会导致渲染器报「模板结构不符」，需同步更新 `template/` 与 `trim_front_matter`。
+- 单文件 ≤ 20 MB。
+- 只读 docx 在线文档。
+- 大纲模板内置两份，新增文档类型需同步注册表与 `client.js`。
+- 预审意见的逐条处置按钮仍是简化版（当前提供存档与助手协助修订）。

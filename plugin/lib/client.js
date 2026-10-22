@@ -1,11 +1,8 @@
 /**
- * 客户端入口：一个可交互的整页视图 + 一个侧边栏入口。
+ * 技术文件起草：分步任务向导。
  *
- * 交互路径：页面收集基本信息 → 通过 ctx.remote.session.create/prompt 新建会话并投递结构化指令
- * → ctx.uiWorkspace.openSession 切到对话，由助手按 Skill 继续执行。
- * 不在页面里重复业务逻辑，页面只负责「收集意图」和「展示状态」。
- *
- * 不使用 JSX、不引入第三方 UI 库；只用 React 宿主模块与主题变量。
+ * 页面按 D1–D8 / R1–R5 推进，每步只做一个决策；状态读写走 Host 的 /api/jswj，
+ * 生成、自检、预审、修订等需要模型的工作通过会话交给助手，助手用 jswj_task_update 写回。
  */
 window.__ModuleLoader__.load({
   id: "@govy/dsh-plugin-jswj-draft",
@@ -15,7 +12,6 @@ window.__ModuleLoader__.load({
 
     const PANEL_ID = "jswj-draft";
     const WIKI_URL = "https://govy.feishu.cn/wiki/K3NpwxFzribxgOkzFxaczeH7nXf";
-
     const inject = ["slots", "remote", "remote.session", "uiWorkspace"];
 
     const C = {
@@ -31,42 +27,55 @@ window.__ModuleLoader__.load({
       warn: "var(--dsw-alias-state-warn-primary)",
       err: "var(--dsw-alias-state-error-primary)",
     };
-
     const MONO = "ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace";
 
-    const DRAFT_STEPS = [
-      ["01", "基本信息", "文件名称、文件类型、密级（L1/L2/L3）、编号可空", "名称非空、类型与密级已选"],
-      ["02", "文档属性", "层级、板块、归档位置，目录由属性推导", "三项齐备、目标目录可建"],
-      ["03", "参考资料", "云文档链接或上传件，逐份确认解析结果", "至少一份解析成功"],
-      ["04", "大纲与纲要", "章节到三、四级，只就一、二级确认要点", "覆盖模板必备章节"],
-      ["05", "生成", "逐章生成正文，表格结构化，图形有数据才画", "全部章节完成"],
-      ["06", "自检", "内容、格式、其他三类检查", "无阻断项"],
-      ["07", "修订", "先汇总要点并确认，再定向修订", "至多三轮，超轮需确认"],
-      ["08", "出稿", "渲染 GY-F003 Word，发布到知识库对应目录", "文件已落位、回执已生成"],
-    ];
+    const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "自检", "修订", "出稿"];
+    const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
 
-    const REVIEW_STEPS = [
-      ["01", "确认开始", "说明范围与预计耗时", "已确认"],
-      ["02", "类型与评审单", "按评审类型加载评审单并冻结版本", "类型与评审单一致"],
-      ["03", "文件与资料", "受审文件必需，参考资料可选", "受审文件解析成功"],
-      ["04", "预审", "按评审单审内容、按模板审格式、查术语与编号", "三类检查均有结论"],
-      ["05", "意见与修订", "输出意见清单并存档，询问是否协助修订", "意见书已写入任务目录"],
-    ];
+    const STEP_DESC = {
+      draft: [
+        "填文件名称、选类型与密级；名称做重名检测，编号可空。",
+        "选层级、板块与归档位置，目录由属性推导。",
+        "粘贴云文档链接或上传原件，至少一份解析成功才能继续。",
+        "确认大纲，补一、二级要点；三级以下可留空。",
+        "逐章生成，这一步交给助手执行。",
+        "系统自检内容、格式与其他三类，有阻断项不能出稿。",
+        "先确认本轮修订要点，再执行修订，最多三轮。",
+        "渲染 GY-F003 Word，发布到知识库并生成回执。",
+      ],
+      review: [
+        "确认预审范围与预计耗时，确认即建立任务。",
+        "选评审类型与评审单，评审单版本冻结。",
+        "提供受审文件；参考资料可选，缺资料时相关检查项标「缺依据」。",
+        "按评审单审内容、按模板审格式，交给助手执行。",
+        "查看意见并决定存档或协助修订，不输出通过结论。",
+      ],
+    };
 
-    const CHAIN = [
-      ["定稿", "Markdown 正文按章节组织，[E#] 引用保留"],
-      ["渲染", "jswj_render_docx 套 GY-F003，回填封面与页眉"],
-      ["发布", "jswj_publish_docx 上传为知识库文件节点"],
-      ["回执", "返回节点 token 与链接，写入任务记录"],
-    ];
-
-    const TREE = [
-      ["技术资料起草库", "知识空间 7698962670346636559", 0],
-      ["首页", "docx", 1],
-      ["技术文件模板", "docx · GY-F003 模板源", 1],
-      ["技术资料草稿库", "docx · 出稿默认落位", 1],
-      ["{层级} / {板块} / {文件类型} /", "按文档属性自动创建", 2],
-    ];
+    const OUTLINE_TEMPLATES = {
+      需求规范: [
+        ["1", "概述", 1, true],
+        ["2", "规范性引用文件", 1, true],
+        ["3", "术语与缩略语", 1, true],
+        ["4", "系统描述", 1, true],
+        ["5", "需求", 1, true],
+        ["5.1", "功能需求", 2, false],
+        ["5.2", "性能需求", 2, false],
+        ["6", "需求确认规划", 1, true],
+        ["7", "结论", 1, true],
+        ["8", "附录", 1, false],
+      ],
+      技术方案: [
+        ["1", "概述", 1, true],
+        ["2", "方案设计", 1, true],
+        ["2.1", "总体方案", 2, false],
+        ["2.2", "关键技术与实现", 2, false],
+        ["3", "接口", 1, true],
+        ["4", "约束与假设", 1, true],
+        ["5", "验证与确认", 1, true],
+        ["6", "结论", 1, true],
+      ],
+    };
 
     const s = {
       page: {
@@ -75,72 +84,16 @@ window.__ModuleLoader__.load({
         minHeight: 0,
         overflowY: "auto",
         overflowX: "hidden",
-        WebkitOverflowScrolling: "touch",
         background: C.base,
         color: C.text,
-        padding: "32px 28px 56px",
+        padding: "28px 26px 56px",
         boxSizing: "border-box",
       },
-      inner: { maxWidth: 1000, margin: "0 auto" },
-      eyebrow: {
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        fontFamily: MONO,
-        fontSize: 12,
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-        color: C.brand,
-        marginBottom: 10,
-      },
-      dot: { width: 6, height: 6, borderRadius: 3, background: C.brand },
-      h1: { fontSize: 24, lineHeight: 1.35, fontWeight: 650, margin: "0 0 8px" },
-      lead: { margin: "0 0 24px", color: C.sub, fontSize: 14, lineHeight: 1.75, maxWidth: 760 },
-      section: { marginBottom: 28 },
-      sectionHead: {
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        gap: 12,
-        marginBottom: 12,
-        flexWrap: "wrap",
-      },
-      sectionTitle: { fontSize: 16, fontWeight: 600, margin: 0 },
-      sectionMeta: { fontSize: 12, color: C.sub },
-      card: {
-        border: `1px solid ${C.line}`,
-        background: C.layer1,
-        borderRadius: 14,
-        padding: "18px 18px 14px",
-      },
-      formGrid: {
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-        gap: 12,
-      },
-      field: { display: "flex", flexDirection: "column", gap: 6 },
-      label: { fontSize: 12, color: C.sub },
-      input: {
-        height: 34,
-        borderRadius: 8,
-        border: `1px solid ${C.line2}`,
-        background: C.base,
-        color: C.text,
-        padding: "0 10px",
-        fontSize: 13,
-        outline: "none",
-        boxSizing: "border-box",
-        width: "100%",
-      },
-      actions: {
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        flexWrap: "wrap",
-        marginTop: 16,
-        paddingTop: 14,
-        borderTop: `1px solid ${C.line}`,
-      },
+      inner: { maxWidth: 1080, margin: "0 auto" },
+      head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
+      h1: { fontSize: 22, fontWeight: 650, margin: 0 },
+      sub: { color: C.sub, fontSize: 13 },
+      actionsRow: { display: "flex", gap: 10, marginLeft: "auto", flexWrap: "wrap" },
       btn: {
         height: 34,
         padding: "0 16px",
@@ -154,7 +107,7 @@ window.__ModuleLoader__.load({
       },
       btnSecondary: {
         height: 34,
-        padding: "0 16px",
+        padding: "0 14px",
         borderRadius: 8,
         border: `1px solid ${C.line2}`,
         background: "transparent",
@@ -163,204 +116,917 @@ window.__ModuleLoader__.load({
         cursor: "pointer",
       },
       btnGhost: {
-        height: 34,
-        padding: "0 12px",
-        borderRadius: 8,
+        height: 30,
+        padding: "0 8px",
+        borderRadius: 6,
         border: "none",
         background: "transparent",
         color: C.sub,
         fontSize: 13,
         cursor: "pointer",
-        textDecoration: "underline",
       },
-      link: { fontSize: 13, color: C.brand, textDecoration: "none" },
-      status: { fontSize: 12.5, lineHeight: 1.6, marginLeft: "auto", maxWidth: 420 },
-      row: {
-        display: "grid",
-        gridTemplateColumns: "44px 116px 1fr",
-        gap: 12,
-        alignItems: "start",
-        padding: "12px 0",
-        borderTop: `1px solid ${C.line}`,
+      btnDisabled: { opacity: 0.5, cursor: "default" },
+      cards: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 },
+      taskCard: {
+        border: `1px solid ${C.line}`,
+        background: C.layer1,
+        borderRadius: 12,
+        padding: "14px 16px",
+        cursor: "pointer",
       },
-      rowFirst: { borderTop: "none" },
-      index: { fontFamily: MONO, fontSize: 12, color: C.sub, paddingTop: 2 },
-      stepName: { fontSize: 14, fontWeight: 550 },
-      stepDesc: { fontSize: 13, color: C.sub, lineHeight: 1.6 },
-      gate: {
-        marginTop: 4,
-        fontSize: 12,
-        color: C.sub,
+      taskTitle: { fontSize: 14, fontWeight: 600, marginBottom: 6 },
+      taskMeta: { fontSize: 12, color: C.sub, display: "flex", gap: 10, flexWrap: "wrap" },
+      badge: {
         display: "inline-flex",
         alignItems: "center",
-        gap: 6,
-      },
-      gateDot: { width: 5, height: 5, borderRadius: 3, background: C.ok, flex: "0 0 auto" },
-      chain: {
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-        gap: 10,
-      },
-      chainCard: {
-        border: `1px solid ${C.line}`,
+        height: 20,
+        padding: "0 8px",
+        borderRadius: 10,
+        fontSize: 11,
         background: C.layer2,
-        borderRadius: 12,
-        padding: "14px 14px 12px",
+        color: C.sub,
       },
-      chainStep: { fontFamily: MONO, fontSize: 11, color: C.brand, marginBottom: 6 },
-      chainTitle: { fontSize: 14, fontWeight: 600, marginBottom: 4 },
-      chainDesc: { fontSize: 12, color: C.sub, lineHeight: 1.6 },
-      tree: {
+      layout: { display: "grid", gridTemplateColumns: "236px 1fr", gap: 18, alignItems: "start" },
+      rail: {
+        border: `1px solid ${C.line}`,
+        background: C.layer1,
+        borderRadius: 12,
+        padding: "14px 12px",
+        position: "sticky",
+        top: 0,
+      },
+      railTitle: { fontSize: 14, fontWeight: 600, marginBottom: 4, wordBreak: "break-all" },
+      railMeta: { fontSize: 12, color: C.sub, marginBottom: 12 },
+      stepItem: {
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        padding: "8px 8px",
+        borderRadius: 8,
+        fontSize: 13,
+      },
+      stepIndex: { fontFamily: MONO, fontSize: 11, color: C.sub, width: 18 },
+      stepDone: { color: C.sub },
+      stepCurrent: { background: C.layer2, color: C.text, fontWeight: 600 },
+      stepLocked: { color: C.sub, opacity: 0.55 },
+      card: {
         border: `1px solid ${C.line}`,
         background: C.layer1,
         borderRadius: 14,
-        padding: "16px 18px",
-        fontFamily: MONO,
-        fontSize: 13,
-        lineHeight: 2,
+        padding: "18px 20px",
       },
-      treeRow: { display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" },
-      treeName: { color: C.text },
-      treeMeta: { color: C.sub, fontSize: 12 },
-      note: {
-        marginTop: 6,
-        border: `1px dashed ${C.line2}`,
-        borderRadius: 12,
-        padding: "14px 16px",
-        color: C.sub,
+      cardHead: { fontFamily: MONO, fontSize: 11, color: C.sub, marginBottom: 6 },
+      cardTitle: { fontSize: 17, fontWeight: 600, margin: "0 0 6px" },
+      cardDesc: { fontSize: 13, color: C.sub, lineHeight: 1.7, marginBottom: 16 },
+      grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 },
+      field: { display: "flex", flexDirection: "column", gap: 6 },
+      label: { fontSize: 12, color: C.sub },
+      input: {
+        height: 34,
+        borderRadius: 8,
+        border: `1px solid ${C.line2}`,
+        background: C.base,
+        color: C.text,
+        padding: "0 10px",
         fontSize: 13,
+        boxSizing: "border-box",
+        width: "100%",
+      },
+      textarea: {
+        minHeight: 120,
+        borderRadius: 8,
+        border: `1px solid ${C.line2}`,
+        background: C.base,
+        color: C.text,
+        padding: "10px",
+        fontSize: 12.5,
         lineHeight: 1.7,
+        boxSizing: "border-box",
+        width: "100%",
+        resize: "vertical",
+        fontFamily: MONO,
       },
-      code: { fontFamily: MONO, fontSize: 12, color: C.text },
+      footer: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        marginTop: 18,
+        paddingTop: 14,
+        borderTop: `1px solid ${C.line}`,
+        flexWrap: "wrap",
+      },
+      status: { fontSize: 12.5, color: C.sub, marginLeft: "auto", maxWidth: 460, lineHeight: 1.6 },
+      list: { display: "flex", flexDirection: "column", gap: 8 },
+      row: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: `1px solid ${C.line}`,
+        background: C.layer2,
+        fontSize: 13,
+      },
+      rowMain: { flex: 1, minWidth: 0 },
+      mono: { fontFamily: MONO, fontSize: 12, color: C.sub },
+      note: {
+        border: `1px dashed ${C.line2}`,
+        borderRadius: 10,
+        padding: "10px 12px",
+        color: C.sub,
+        fontSize: 12.5,
+        lineHeight: 1.7,
+        marginTop: 12,
+      },
+      link: { color: C.brand, textDecoration: "none", fontSize: 13 },
+      chapter: {
+        display: "grid",
+        gridTemplateColumns: "28px 56px 150px 1fr",
+        gap: 8,
+        alignItems: "center",
+        padding: "6px 0",
+        borderTop: `1px solid ${C.line}`,
+      },
+      chapterInput: {
+        height: 30,
+        borderRadius: 6,
+        border: `1px solid ${C.line2}`,
+        background: C.base,
+        color: C.text,
+        padding: "0 8px",
+        fontSize: 12.5,
+        boxSizing: "border-box",
+        width: "100%",
+      },
     };
 
-    function Section(props) {
-      return h(
-        "section",
-        { style: props.style ?? s.section },
-        h(
-          "div",
-          { style: s.sectionHead },
-          h("h2", { style: s.sectionTitle }, props.title),
-          props.meta ? h("span", { style: s.sectionMeta }, props.meta) : null,
-        ),
-        props.children,
-      );
+    async function call(action, payload = {}) {
+      const res = await fetch("/api/jswj", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", "x-jswj": "1" },
+        body: JSON.stringify({ action, ...payload }),
+      });
+      const data = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+      if (!data.ok) throw new Error(data.error || "请求失败");
+      return data.value;
     }
 
-    function Field(props) {
-      return h(
-        "div",
-        { style: { ...s.field, gridColumn: props.wide ? "1 / -1" : undefined } },
-        h("label", { style: s.label, htmlFor: props.id }, props.label),
-        props.children,
-      );
+    function stepsOf(flow) {
+      return flow === "review" ? REVIEW_STEPS : DRAFT_STEPS;
     }
 
-    function StepTable(props) {
-      return h(
-        "div",
-        { style: s.card },
-        props.steps.map((step, i) =>
-          h(
-            "div",
-            { key: step[0], style: { ...s.row, ...(i === 0 ? s.rowFirst : {}) } },
-            h("div", { style: s.index }, step[0]),
-            h("div", { style: s.stepName }, step[1]),
-            h(
-              "div",
-              null,
-              h("div", { style: s.stepDesc }, step[2]),
-              h(
-                "div",
-                { style: s.gate },
-                h("span", { style: s.gateDot }),
-                h("span", null, "门禁：", step[3]),
-              ),
-            ),
-          ),
-        ),
-      );
+    function templateFor(type) {
+      const rows = OUTLINE_TEMPLATES[type] || OUTLINE_TEMPLATES["需求规范"];
+      return rows.map(([no, title, level, required]) => ({
+        no,
+        title,
+        level,
+        required,
+        included: required,
+        points: [],
+        aiDraft: false,
+      }));
     }
 
-    function Chain() {
-      return h(
-        "div",
-        { style: s.chain },
-        CHAIN.map((item, i) =>
-          h(
-            "div",
-            { key: item[0], style: s.chainCard },
-            h("div", { style: s.chainStep }, `STEP ${i + 1}`),
-            h("div", { style: s.chainTitle }, item[0]),
-            h("div", { style: s.chainDesc }, item[1]),
-          ),
-        ),
-      );
+    function hydrate(task) {
+      const d = task.data || {};
+      const chapters = d.outline && Array.isArray(d.outline.chapters) && d.outline.chapters.length
+        ? d.outline.chapters
+        : templateFor(d.basic?.type || "需求规范");
+      return {
+        basic: { ...(d.basic || {}) },
+        attrs: { ...(d.attrs || {}) },
+        sources: Array.isArray(d.sources) ? d.sources : [],
+        chapters: chapters.map((c) => ({ ...c, points: Array.isArray(c.points) ? c.points : [] })),
+        outlineConfirmed: Boolean(d.outline?.confirmed),
+        generation: { ...(d.generation || {}) },
+        selfcheck: { ...(d.selfcheck || {}) },
+        revision: {
+          round: d.revision?.round || 1,
+          items: Array.isArray(d.revision?.items) ? d.revision.items : [],
+          confirmed: Boolean(d.revision?.confirmed),
+        },
+        review: {
+          confirmed: Boolean(d.review?.confirmed),
+          type: d.review?.type || d.basic?.type || "需求规范",
+          checklist: d.review?.checklist || "",
+          file: d.review?.file || {},
+          issues: Array.isArray(d.review?.issues) ? d.review.issues : [],
+          archived: Boolean(d.review?.archived),
+        },
+        publishMarkdown: d.publish?.markdown || d.generation?.markdown || "",
+        publish: { ...(d.publish || {}) },
+        link: "",
+        status: "",
+      };
     }
 
-    function Tree() {
-      return h(
-        "div",
-        { style: s.tree },
-        TREE.map((node, i) =>
-          h(
-            "div",
-            { key: i, style: { ...s.treeRow, paddingLeft: node[2] * 18 } },
-            h("span", { style: s.treeName }, `${node[2] === 0 ? "" : node[2] === 1 ? "├─ " : "└─ "}${node[0]}`),
-            h("span", { style: s.treeMeta }, node[1]),
-          ),
-        ),
-      );
+    function promptFor(task, step, extra) {
+      const names = stepsOf(task.flow);
+      return [
+        `【JSWJ 任务 ${task.id} · 第 ${step} 步：${names[step - 1]}】`,
+        "请加载 jswj-draftbydsh 技能，先调用 jswj_task_get 读取该任务，再按任务数据完成这一步。",
+        extra || "",
+        "完成后必须调用 jswj_task_update 把结果写回任务（generation / selfcheck / revision / review.issues），然后回到「技术文件起草」页面点刷新继续。",
+      ]
+        .filter(Boolean)
+        .join("\n");
     }
 
     function JswjPage(props) {
-      const [form, setForm] = React.useState({
-        title: "",
-        type: "需求规范",
-        classification: "L2 重要/秘密",
-        tier: "T2 子系统级",
-        board: "总体",
-      });
-      const [status, setStatus] = React.useState({ kind: "idle", text: "填写信息后点击「开始起草」，会在新会话中启动流程。" });
+      const [screen, setScreen] = React.useState("list");
+      const [tasks, setTasks] = React.useState([]);
+      const [task, setTask] = React.useState(null);
+      const [form, setForm] = React.useState(null);
       const [busy, setBusy] = React.useState(false);
+      const [error, setError] = React.useState("");
+      const [notice, setNotice] = React.useState("");
 
-      const update = (key) => (event) => {
-        setForm((current) => ({ ...current, [key]: event.target.value }));
+      const loadTasks = async () => {
+        try {
+          setTasks(await call("tasks.list"));
+        } catch (err) {
+          setError(String(err.message || err));
+        }
       };
 
-      const run = async (kind) => {
+      React.useEffect(() => {
+        loadTasks();
+      }, []);
+
+      React.useEffect(() => {
+        if (task) setForm(hydrate(task));
+      }, [task && task.id, task && task.step, task && task.updatedAt]);
+
+      const run = async (fn) => {
         if (busy) return;
-        if (kind === "draft" && !form.title.trim()) {
-          setStatus({ kind: "error", text: "第①步门禁未过：文件名称不能为空。" });
-          return;
-        }
         setBusy(true);
-        setStatus({ kind: "pending", text: "正在创建会话并投递指令…" });
+        setError("");
+        setNotice("");
         try {
-          await props.startFlow(kind, form);
-          setStatus({ kind: "ok", text: "已在新会话中启动，请到对话里确认下一步。" });
+          await fn();
         } catch (err) {
-          setStatus({
-            kind: "error",
-            text: "启动失败：" + String((err && err.message) || err) + "。可点「复制指令」粘贴到对话中继续。",
-          });
+          setError(String((err && err.message) || err));
         } finally {
           setBusy(false);
         }
       };
 
-      const copy = async () => {
-        try {
-          await props.copyCommand(form);
-          setStatus({ kind: "ok", text: "指令已复制，可粘贴到任意对话中。" });
-        } catch (err) {
-          setStatus({ kind: "error", text: "复制失败：" + String((err && err.message) || err) });
-        }
+      const openTask = async (id) => {
+        await run(async () => {
+          const fresh = await call("tasks.get", { id });
+          setTask(fresh);
+          setScreen("task");
+        });
       };
 
-      const statusColor =
-        status.kind === "ok" ? C.ok : status.kind === "error" ? C.err : status.kind === "pending" ? C.warn : C.sub;
+      const newTask = async (flow) => {
+        await run(async () => {
+          const created = await call("tasks.create", { flow });
+          setTask(created);
+          setScreen("task");
+        });
+      };
+
+      const refreshTask = async () => {
+        if (!task) return;
+        await run(async () => {
+          setTask(await call("tasks.get", { id: task.id }));
+        });
+      };
+
+      const savePatch = async (patch) => {
+        await run(async () => {
+          setTask(await call("tasks.patch", { id: task.id, patch }));
+        });
+      };
+
+      const submit = async (data) => {
+        await run(async () => {
+          setTask(await call("tasks.step", { id: task.id, step: task.step, data }));
+        });
+      };
+
+      const backStep = async () => {
+        await savePatch({ step: Math.max(1, task.step - 1) });
+      };
+
+      const handoff = async (step, extra) => {
+        await run(async () => {
+          await props.startAgent(promptFor(task, step, extra));
+          setNotice("已在新会话中交给助手；完成后回本页点「刷新」。");
+        });
+      };
+
+      if (screen === "list" || !task || !form) {
+        return h(
+          "div",
+          { style: s.page },
+          h(
+            "div",
+            { style: s.inner },
+            h(
+              "div",
+              { style: s.head },
+              h("h1", { style: s.h1 }, "技术文件起草"),
+              h("span", { style: s.sub }, "按步骤推进，门禁未过不能进入下一步"),
+              h(
+                "div",
+                { style: s.actionsRow },
+                h("button", { style: s.btnSecondary, onClick: () => run(loadTasks) }, "刷新"),
+                h("button", { style: s.btnSecondary, onClick: () => newTask("review") }, "新建预审"),
+                h("button", { style: s.btn, onClick: () => newTask("draft") }, "新建技术文件"),
+              ),
+            ),
+            error ? h("div", { style: { color: C.err, fontSize: 13, marginBottom: 12 } }, error) : null,
+            tasks.length === 0
+              ? h("div", { style: s.note }, "还没有任务。点右上角「新建技术文件」开始。")
+              : h(
+                  "div",
+                  { style: s.cards },
+                  tasks.map((item) =>
+                    h(
+                      "div",
+                      { key: item.id, style: s.taskCard, onClick: () => openTask(item.id) },
+                      h("div", { style: s.taskTitle }, item.title || "未命名"),
+                      h(
+                        "div",
+                        { style: s.taskMeta },
+                        h("span", { style: s.badge }, item.flow === "review" ? "预审" : "起草"),
+                        h("span", null, `${item.id}`),
+                        h("span", null, `${item.step}/${stepsOf(item.flow).length} · ${item.stepName}`),
+                        h("span", null, String(item.updatedAt || "").replace("T", " ").slice(0, 16)),
+                      ),
+                    ),
+                  ),
+                ),
+            h(
+              "div",
+              { style: s.note },
+              "知识库：",
+              h("a", { href: WIKI_URL, target: "_blank", rel: "noreferrer", style: s.link }, "技术资料起草库 / 技术资料草稿库"),
+              "。页面只保存任务与决策，生成、自检、预审、修订由助手执行。",
+            ),
+          ),
+        );
+      }
+
+      const flow = task.flow;
+      const names = stepsOf(flow);
+      const step = Number(task.step);
+      const title = task.data?.basic?.name || "未命名";
+      const set = (patch) => setForm((current) => ({ ...current, ...patch }));
+      const setBasic = (key) => (e) => set({ basic: { ...form.basic, [key]: e.target.value } });
+      const setAttrs = (key) => (e) => set({ attrs: { ...form.attrs, [key]: e.target.value } });
+
+      const stepBody = () => {
+        if (flow === "draft") {
+          if (step === 1) {
+            return h(
+              "div",
+              null,
+              h(
+                "div",
+                { style: s.grid },
+                h("div", { style: { ...s.field, gridColumn: "1 / -1" } },
+                  h("label", { style: s.label }, "文件名称（必填）"),
+                  h("input", { style: s.input, value: form.basic.name || "", placeholder: "例如：A6-RCU-需求规范", onChange: setBasic("name") }),
+                ),
+                h("div", { style: s.field },
+                  h("label", { style: s.label }, "文件类型"),
+                  h(
+                    "select",
+                    { style: s.input, value: form.basic.type || "需求规范", onChange: setBasic("type") },
+                    ["需求规范", "技术方案"].map((v) => h("option", { key: v }, v)),
+                  ),
+                ),
+                h("div", { style: s.field },
+                  h("label", { style: s.label }, "密级"),
+                  h(
+                    "select",
+                    { style: s.input, value: form.basic.classification || "L2 重要/秘密", onChange: setBasic("classification") },
+                    ["L1 内部有条件公开", "L2 重要/秘密", "L3 核心/绝密"].map((v) => h("option", { key: v }, v)),
+                  ),
+                ),
+                h("div", { style: s.field },
+                  h("label", { style: s.label }, "编号（可空）"),
+                  h("input", { style: s.input, value: form.basic.number || "", placeholder: "标准化部门分配的编号", onChange: setBasic("number") }),
+                ),
+              ),
+              h("div", { style: s.note }, "类型决定章节模板与评审单，选定后流程中不可改；要改只能新建任务。"),
+              h(
+                "div",
+                { style: s.footer },
+                h("button", { style: s.btnSecondary, onClick: () => setScreen("list") }, "返回列表"),
+                h(
+                  "button",
+                  {
+                    style: { ...s.btn, ...(busy ? s.btnDisabled : {}) },
+                    disabled: busy,
+                    onClick: () => submit({ basic: form.basic }),
+                  },
+                  "下一步：文档属性",
+                ),
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+              ),
+            );
+          }
+
+          if (step === 2) {
+            const path = `技术资料起草库 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} / ${form.basic.type || "-"} /`;
+            return h(
+              "div",
+              null,
+              h(
+                "div",
+                { style: s.grid },
+                h("div", { style: s.field },
+                  h("label", { style: s.label }, "层级"),
+                  h(
+                    "select",
+                    { style: s.input, value: form.attrs.tier || "T2 子系统级", onChange: setAttrs("tier") },
+                    ["T0 飞机级", "T1 系统级", "T2 子系统级", "T3 设备级", "T4 软硬件级"].map((v) => h("option", { key: v }, v)),
+                  ),
+                ),
+                h("div", { style: s.field },
+                  h("label", { style: s.label }, "板块"),
+                  h(
+                    "select",
+                    { style: s.input, value: form.attrs.board || "总体", onChange: setAttrs("board") },
+                    ["总体", "电子", "试验试飞", "动力"].map((v) => h("option", { key: v }, v)),
+                  ),
+                ),
+                h("div", { style: s.field },
+                  h("label", { style: s.label }, "归档位置"),
+                  h(
+                    "select",
+                    { style: s.input, value: form.attrs.archive || "feishu", onChange: setAttrs("archive") },
+                    h("option", { value: "feishu" }, "飞书审批"),
+                    h("option", { value: "polarion" }, "Polarion"),
+                  ),
+                ),
+                form.attrs.archive === "polarion"
+                  ? h("div", { style: s.field },
+                      h("label", { style: s.label }, "Polarion 项目空间"),
+                      h("input", { style: s.input, value: form.attrs.project || "", placeholder: "例如：GAC_A6_T4", onChange: setAttrs("project") }),
+                    )
+                  : null,
+              ),
+              h("div", { style: s.note },
+                "本文件将创建于：",
+                h("span", { style: { ...s.mono, color: C.text } }, path),
+                "目录不存在时在出稿阶段创建，已存在则复用。",
+              ),
+              h(
+                "div",
+                { style: s.footer },
+                h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+                h(
+                  "button",
+                  { style: { ...s.btn, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: () => submit({ attrs: form.attrs }) },
+                  "下一步：参考资料",
+                ),
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+              ),
+            );
+          }
+
+          if (step === 3) {
+            const parse = () =>
+              run(async () => {
+                const link = String(form.link || "").trim();
+                if (!link) throw new Error("请先粘贴飞书云文档链接");
+                const doc = await call("doc.read", { target: link });
+                set({
+                  sources: [
+                    ...form.sources.filter((x) => x.url !== link),
+                    { url: link, title: doc.title || link, ok: true, chars: doc.chars, objToken: doc.objToken },
+                  ],
+                  link: "",
+                });
+              });
+            const okCount = form.sources.filter((x) => x.ok).length;
+            return h(
+              "div",
+              null,
+              h(
+                "div",
+                { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+                h("input", { style: { ...s.input, flex: "1 1 320px" }, value: form.link || "", placeholder: "粘贴飞书云文档链接，回车或点「解析」", onChange: (e) => set({ link: e.target.value }) }),
+                h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: parse }, "解析"),
+              ),
+              h("div", { style: { ...s.list, marginTop: 12 } },
+                form.sources.length === 0
+                  ? h("div", { style: s.note }, "还没有参考资料。原文件请先上传到飞书云文档，再粘贴链接。")
+                  : form.sources.map((item, i) =>
+                      h(
+                        "div",
+                        { key: `${item.url}-${i}`, style: s.row },
+                        h("span", { style: { color: item.ok ? C.ok : C.err } }, item.ok ? "✓" : "✕"),
+                        h(
+                          "div",
+                          { style: s.rowMain },
+                          h("div", { style: { fontSize: 13 } }, item.title || item.url),
+                          h("div", { style: s.mono }, item.ok ? `已解析 · ${item.chars} 字` : `解析失败：${item.error || ""}`),
+                        ),
+                        h(
+                          "button",
+                          { style: s.btnGhost, onClick: () => set({ sources: form.sources.filter((_, idx) => idx !== i) }) },
+                          "移除",
+                        ),
+                      ),
+                    ),
+              ),
+              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除，不能以空结果继续。"),
+              h(
+                "div",
+                { style: s.footer },
+                h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+                h(
+                  "button",
+                  {
+                    style: { ...s.btn, ...(busy || okCount === 0 ? s.btnDisabled : {}) },
+                    disabled: busy || okCount === 0,
+                    onClick: () => submit({ sources: form.sources }),
+                  },
+                  "锁定来源",
+                ),
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+              ),
+            );
+          }
+
+          if (step === 4) {
+            const setChapter = (index, patch) =>
+              set({ chapters: form.chapters.map((c, i) => (i === index ? { ...c, ...patch } : c)) });
+            return h(
+              "div",
+              null,
+              h("div", { style: s.list },
+                form.chapters.map((c, i) =>
+                  h(
+                    "div",
+                    { key: c.no, style: s.chapter },
+                    h("input", {
+                      type: "checkbox",
+                      checked: Boolean(c.included),
+                      disabled: Boolean(c.required),
+                      onChange: (e) => setChapter(i, { included: e.target.checked }),
+                    }),
+                    h("span", { style: s.mono }, c.no),
+                    h(
+                      "span",
+                      { style: { fontSize: 13, paddingLeft: c.level > 1 ? 12 : 0 } },
+                      c.title,
+                      c.required ? h("span", { style: { ...s.badge, marginLeft: 6 } }, "必备") : null,
+                    ),
+                    c.level <= 2
+                      ? h(
+                          "div",
+                          { style: { display: "flex", gap: 6, alignItems: "center" } },
+                          h("input", {
+                            style: s.chapterInput,
+                            value: (c.points || []).join("；"),
+                            placeholder: "要点，用；分隔",
+                            onChange: (e) =>
+                              setChapter(i, {
+                                points: e.target.value.split(/[；;\n]/).map((x) => x.trim()).filter(Boolean),
+                              }),
+                          }),
+                          h(
+                            "label",
+                            { style: { fontSize: 11, color: C.sub, whiteSpace: "nowrap", display: "flex", gap: 4, alignItems: "center" } },
+                            h("input", {
+                              type: "checkbox",
+                              checked: Boolean(c.aiDraft),
+                              onChange: (e) => setChapter(i, { aiDraft: e.target.checked }),
+                            }),
+                            "AI 拟稿",
+                          ),
+                        )
+                      : h("span", { style: s.mono }, "三级以下，默认折叠"),
+                  ),
+                ),
+              ),
+              h("div", { style: s.note }, "大纲覆盖到四级；一级、二级要点必须填写或标注「由 AI 拟稿」。必备章节不可取消。"),
+              h(
+                "div",
+                { style: s.footer },
+                h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+                h(
+                  "button",
+                  {
+                    style: { ...s.btn, ...(busy ? s.btnDisabled : {}) },
+                    disabled: busy,
+                    onClick: () =>
+                      submit({
+                        outline: { chapters: form.chapters, confirmed: true },
+                      }),
+                  },
+                  "确认，开始生成",
+                ),
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+              ),
+            );
+          }
+
+          if (step === 5 || step === 6 || step === 7) {
+            const gen = form.generation || {};
+            const selfcheck = form.selfcheck || {};
+            const revision = form.revision || { round: 1, items: [], confirmed: false };
+            const items = revision.items || [];
+            const data =
+              step === 5
+                ? h(
+                    "div",
+                    null,
+                    h("div", { style: s.row }, h("span", { style: { color: gen.status === "done" ? C.ok : C.warn } }, gen.status === "done" ? "✓" : "…"), h("div", { style: s.rowMain }, h("div", null, gen.status === "done" ? "生成已完成" : "等待助手生成"), h("div", { style: s.mono }, gen.note || ""))),
+                    h("div", { style: s.note }, "点「交给助手生成」会新建会话并把任务号交给助手；助手完成后用 jswj_task_update 写回 generation.status=done。"),
+                  )
+                : step === 6
+                  ? h(
+                      "div",
+                      null,
+                      h("div", { style: s.row }, h("span", { style: { color: selfcheck.status === "clean" ? C.ok : C.warn } }, selfcheck.status === "clean" ? "✓" : "…"), h("div", { style: s.rowMain }, h("div", null, selfcheck.status === "clean" ? "自检无阻断" : "自检未完成或有阻断"), h("div", { style: s.mono }, (selfcheck.items || []).length ? `${selfcheck.items.length} 个问题` : "无记录"))),
+                      (selfcheck.items || []).length
+                        ? h("div", { style: { ...s.list, marginTop: 10 } }, selfcheck.items.map((it, i) => h("div", { key: i, style: s.row }, h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"), h("div", { style: s.rowMain }, h("div", null, `${it.location || ""} ${it.problem || ""}`), h("div", { style: s.mono }, it.basis || "")))))
+                        : null,
+                    )
+                  : h(
+                      "div",
+                      null,
+                      h("div", { style: s.row }, h("span", { style: { color: C.warn } }, "↻"), h("div", { style: s.rowMain }, h("div", null, `第 ${revision.round || 1} 轮修订`), h("div", { style: s.mono }, `${items.length} 处待确认`))),
+                      items.length
+                        ? h("div", { style: { ...s.list, marginTop: 10 } }, items.map((it, i) => h("div", { key: i, style: s.row }, h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"), h("div", { style: s.rowMain }, h("div", null, `${it.location || ""} ${it.problem || ""}`), h("div", { style: s.mono }, it.action || it.suggestion || "")))))
+                        : h("div", { style: s.note }, "还没有修订要点。点「交给助手修订」，助手会汇总本轮要点并写回。"),
+                      h("label", { style: { ...s.row, marginTop: 10, cursor: "pointer" } }, h("input", { type: "checkbox", checked: Boolean(revision.confirmed), onChange: (e) => set({ revision: { ...revision, confirmed: e.target.checked } }) }), h("span", null, "我已确认本轮修订要点")),
+                    );
+
+            const canNext =
+              (step === 5 && gen.status === "done") ||
+              (step === 6 && selfcheck.status === "clean") ||
+              (step === 7 && revision.confirmed);
+            return h(
+              "div",
+              null,
+              data,
+              h(
+                "div",
+                { style: s.footer },
+                h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+                h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
+                h(
+                  "button",
+                  { style: s.btnSecondary, onClick: () => handoff(step) },
+                  step === 5 ? "交给助手生成" : step === 6 ? "交给助手自检" : "交给助手修订",
+                ),
+                h(
+                  "button",
+                  { style: { ...s.btn, ...(busy || !canNext ? s.btnDisabled : {}) }, disabled: busy || !canNext, onClick: () => submit(step === 7 ? { revision: { ...revision, confirmed: true } } : {}) },
+                  "下一步",
+                ),
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
+              ),
+            );
+          }
+
+          // step 8
+          const markdown =
+            form.publishMarkdown ||
+            [
+              `# ${form.basic.name || "技术文件"}`,
+              "",
+              ...form.chapters
+                .filter((c) => c.included)
+                .flatMap((c) => [
+                  `## ${c.no} ${c.title}`,
+                  ...(c.points || []).map((p) => `- ${p}`),
+                  "",
+                ]),
+            ].join("\n");
+          const publish = () =>
+            run(async () => {
+              const result = await call("publish", {
+                id: task.id,
+                markdown,
+                title: form.basic.name || "技术文件",
+                classification: form.basic.classification,
+                name: `${form.basic.number ? `${form.basic.number}-` : ""}${form.basic.name || "技术文件"}.docx`,
+              });
+              set({ publish: { url: result.url, nodeToken: result.wikiToken, filePath: result.path } });
+              setTask(await call("tasks.get", { id: task.id }));
+            });
+          return h(
+            "div",
+            null,
+            h("div", { style: s.field },
+              h("label", { style: s.label }, "正文 Markdown（可手改，助手也可写回）"),
+              h("textarea", { style: s.textarea, value: markdown, onChange: (e) => set({ publishMarkdown: e.target.value }) }),
+            ),
+            h(
+              "div",
+              { style: s.grid, marginTop: 12 },
+              h("div", { style: s.field }, h("label", { style: s.label }, "文件名称"), h("input", { style: s.input, value: form.basic.name || "", onChange: setBasic("name") })),
+              h("div", { style: s.field }, h("label", { style: s.label }, "密级"), h("input", { style: s.input, value: form.basic.classification || "", onChange: setBasic("classification") })),
+            ),
+            form.publish?.url
+              ? h("div", { style: s.note }, "已出稿：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
+              : null,
+            h(
+              "div",
+              { style: s.footer },
+              h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+              h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: publish }, "渲染并发布"),
+              h(
+                "button",
+                {
+                  style: { ...s.btn, ...(busy || !form.publish?.url ? s.btnDisabled : {}) },
+                  disabled: busy || !form.publish?.url,
+                  onClick: () => submit({}),
+                },
+                "完成出稿",
+              ),
+              error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+            ),
+          );
+        }
+
+        // review flow
+        if (step === 1) {
+          return h(
+            "div",
+            null,
+            h("div", { style: s.note }, "预审只出「待确认问题」，不输出通过或不通过的结论。预计 3–5 分钟，可中断续做。"),
+            h("label", { style: { ...s.row, marginTop: 12, cursor: "pointer" } }, h("input", { type: "checkbox", checked: Boolean(form.review.confirmed), onChange: (e) => set({ review: { ...form.review, confirmed: e.target.checked } }) }), h("span", null, "确认开始，建立预审任务")),
+            h(
+              "div",
+              { style: s.footer },
+              h("button", { style: s.btnSecondary, onClick: () => setScreen("list") }, "返回列表"),
+              h(
+                "button",
+                { style: { ...s.btn, ...(busy || !form.review.confirmed ? s.btnDisabled : {}) }, disabled: busy || !form.review.confirmed, onClick: () => submit({ review: { ...form.review, confirmed: true } }) },
+                "下一步：类型与评审单",
+              ),
+              error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+            ),
+          );
+        }
+
+        if (step === 2) {
+          const options = {
+            需求规范: "需求规范评审单 v1（28 项）",
+            技术方案: "技术方案评审单 v2（32 项）",
+          };
+          return h(
+            "div",
+            null,
+            h(
+              "div",
+              { style: s.grid },
+              h("div", { style: s.field },
+                h("label", { style: s.label }, "评审类型"),
+                h(
+                  "select",
+                  { style: s.input, value: form.review.type || "需求规范", onChange: (e) => set({ review: { ...form.review, type: e.target.value, checklist: options[e.target.value] || "" } }) },
+                  ["需求规范", "技术方案"].map((v) => h("option", { key: v }, v)),
+                ),
+              ),
+              h("div", { style: s.field },
+                h("label", { style: s.label }, "评审单"),
+                h(
+                  "select",
+                  { style: s.input, value: form.review.checklist || options[form.review.type] || "", onChange: (e) => set({ review: { ...form.review, checklist: e.target.value } }) },
+                  Object.values(options).map((v) => h("option", { key: v }, v)),
+                ),
+              ),
+            ),
+            h("div", { style: s.note }, "类型与评审单的适用类型必须一致；一个任务只用一份评审单，中途更换须新建任务。"),
+            h(
+              "div",
+              { style: s.footer },
+              h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+              h("button", { style: { ...s.btn, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: () => submit({ review: { ...form.review, checklist: form.review.checklist || options[form.review.type] } }) }, "下一步：文件与资料"),
+              error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+            ),
+          );
+        }
+
+        if (step === 3) {
+          const parse = () =>
+            run(async () => {
+              const link = String(form.link || "").trim();
+              if (!link) throw new Error("请先粘贴受审文件链接");
+              const doc = await call("doc.read", { target: link });
+              set({ review: { ...form.review, file: { url: link, title: doc.title || link, ok: true, chars: doc.chars } }, link: "" });
+            });
+          return h(
+            "div",
+            null,
+            h(
+              "div",
+              { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+              h("input", { style: { ...s.input, flex: "1 1 320px" }, value: form.link || "", placeholder: "粘贴受审文件的飞书云文档链接", onChange: (e) => set({ link: e.target.value }) }),
+              h("button", { style: s.btnSecondary, disabled: busy, onClick: parse }, "解析"),
+            ),
+            form.review.file?.ok
+              ? h("div", { style: { ...s.row, marginTop: 10 } }, h("span", { style: { color: C.ok } }, "✓"), h("div", { style: s.rowMain }, h("div", null, form.review.file.title), h("div", { style: s.mono }, `已解析 · ${form.review.file.chars} 字`)))
+              : h("div", { style: s.note }, "受审文件是必需项；参考资料可在后续交给助手时补充，缺失时相关检查项标「缺依据」。"),
+            h(
+              "div",
+              { style: s.footer },
+              h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+              h(
+                "button",
+                { style: { ...s.btn, ...(busy || !form.review.file?.ok ? s.btnDisabled : {}) }, disabled: busy || !form.review.file?.ok, onClick: () => submit({ review: { ...form.review } }) },
+                "下一步：预审",
+              ),
+              error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+            ),
+          );
+        }
+
+        if (step === 4) {
+          const issues = form.review.issues || [];
+          return h(
+            "div",
+            null,
+            h("div", { style: s.row }, h("span", { style: { color: issues.length ? C.ok : C.warn } }, issues.length ? "✓" : "…"), h("div", { style: s.rowMain }, h("div", null, issues.length ? `已生成 ${issues.length} 条意见` : "等待助手预审"), h("div", { style: s.mono }, issues.length ? `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议` : ""))),
+            issues.length
+              ? h("div", { style: { ...s.list, marginTop: 10 } }, issues.map((it, i) => h("div", { key: i, style: s.row }, h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"), h("div", { style: s.rowMain }, h("div", null, `${it.location || ""} ${it.problem || ""}`), h("div", { style: s.mono }, it.basis || "")))))
+              : h("div", { style: s.note }, "点「交给助手预审」，助手按评审单检查后把意见写回 review.issues。"),
+            h(
+              "div",
+              { style: s.footer },
+              h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+              h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
+              h("button", { style: s.btnSecondary, onClick: () => handoff(4) }, "交给助手预审"),
+              h("button", { style: { ...s.btn, ...(busy || issues.length === 0 ? s.btnDisabled : {}) }, disabled: busy || issues.length === 0, onClick: () => submit({}) }, "下一步：意见与修订"),
+              error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+            ),
+          );
+        }
+
+        // step 5
+        const issues = form.review.issues || [];
+        const archive = () =>
+          run(async () => {
+            const rows = issues
+              .map((it, i) => `| ${i + 1} | ${it.severity || "建议"} | ${it.location || ""} | ${it.problem || ""} | ${it.basis || "缺依据"} | ${it.suggestion || ""} |`)
+              .join("\n");
+            const markdown = [
+              `# ${form.basic.name || "技术文件"} · 预审意见`,
+              "",
+              "## 预审范围",
+              "",
+              `评审类型：${form.review.type}；评审单：${form.review.checklist}；受审文件：${form.review.file?.title || "-"}。`,
+              "",
+              "## 意见清单",
+              "",
+              "| # | 等级 | 位置 | 问题 | 依据 | 建议 |",
+              "|---|---|---|---|---|---|",
+              rows,
+              "",
+              "## 说明",
+              "",
+              "本意见书只列待确认问题，不输出通过或不通过结论。",
+            ].join("\n");
+            const result = await call("publish", {
+              id: task.id,
+              markdown,
+              title: `${form.basic.name || "技术文件"}-预审意见`,
+              classification: form.basic.classification,
+              name: `${form.basic.name || "技术文件"}-预审意见.docx`,
+            });
+            set({ publish: { url: result.url } });
+            setTask(await call("tasks.get", { id: task.id }));
+            setNotice("意见书已存档。");
+          });
+        return h(
+          "div",
+          null,
+          h("div", { style: s.row }, h("span", { style: { color: issues.length ? C.ok : C.warn } }, "●"), h("div", { style: s.rowMain }, h("div", null, `${issues.length} 条意见`), h("div", { style: s.mono }, `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议`))),
+          h("div", { style: s.note }, "存档目录：技术资料起草库 / 出稿库 / 预审 / {评审类型} / {任务号} /。协助修订只按意见逐条改，不整体润色、不补写整节。"),
+          form.publish?.url ? h("div", { style: s.note }, "已存档：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url)) : null,
+          h(
+            "div",
+            { style: s.footer },
+            h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+            h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。") }, "交给助手协助修订"),
+            h("button", { style: s.btnSecondary, disabled: busy, onClick: archive }, "存档意见书"),
+            h(
+              "button",
+              {
+                style: { ...s.btn, ...(busy || !(form.publish?.url || form.review.archived) ? s.btnDisabled : {}) },
+                disabled: busy || !(form.publish?.url || form.review.archived),
+                onClick: () => submit({ review: { ...form.review, archived: true } }),
+              },
+              "完成",
+            ),
+            error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+          ),
+        );
+      };
 
       return h(
         "div",
@@ -368,138 +1034,50 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { style: s.inner },
-          h("div", { style: s.eyebrow }, h("span", { style: s.dot }), "JSWJ_DraftbyDSH"),
-          h("h1", { style: s.h1 }, "技术文件起草"),
-          h(
-            "p",
-            { style: s.lead },
-            "页面负责收集意图，助手负责执行。填好基本信息后点「开始起草」，会在新会话中把结构化指令交给助手，由它按 Skill 的八步流程继续；预审同理。",
-          ),
-          h(
-            Section,
-            { title: "快速开始", meta: "点击后自动切到对话" },
-            h(
-              "div",
-              { style: s.card },
-              h(
-                "div",
-                { style: s.formGrid },
-                h(
-                  Field,
-                  { label: "文件名称（必填）", wide: true },
-                  h("input", {
-                    id: "jswj-title",
-                    style: s.input,
-                    value: form.title,
-                    placeholder: "例如：RCU 需求规范",
-                    onChange: update("title"),
-                  }),
-                ),
-                h(
-                  Field,
-                  { label: "文件类型" },
-                  h(
-                    "select",
-                    { style: s.input, value: form.type, onChange: update("type") },
-                    h("option", null, "需求规范"),
-                    h("option", null, "技术方案"),
-                  ),
-                ),
-                h(
-                  Field,
-                  { label: "密级" },
-                  h(
-                    "select",
-                    { style: s.input, value: form.classification, onChange: update("classification") },
-                    h("option", null, "L1 公开"),
-                    h("option", null, "L2 重要/秘密"),
-                    h("option", null, "L3 一般"),
-                  ),
-                ),
-                h(
-                  Field,
-                  { label: "层级" },
-                  h(
-                    "select",
-                    { style: s.input, value: form.tier, onChange: update("tier") },
-                    ["T0 飞机级", "T1 系统级", "T2 子系统级", "T3 设备级", "T4 软硬件级"].map((v) =>
-                      h("option", { key: v }, v),
-                    ),
-                  ),
-                ),
-                h(
-                  Field,
-                  { label: "板块" },
-                  h(
-                    "select",
-                    { style: s.input, value: form.board, onChange: update("board") },
-                    ["总体", "电子", "试验试飞", "动力"].map((v) => h("option", { key: v }, v)),
-                  ),
-                ),
-              ),
-              h(
-                "div",
-                { style: s.actions },
-                h(
-                  "button",
-                  {
-                    type: "button",
-                    style: { ...s.btn, opacity: busy ? 0.6 : 1, cursor: busy ? "default" : "pointer" },
-                    disabled: busy,
-                    onClick: () => run("draft"),
-                  },
-                  "开始起草",
-                ),
-                h(
-                  "button",
-                  {
-                    type: "button",
-                    style: { ...s.btnSecondary, opacity: busy ? 0.6 : 1 },
-                    disabled: busy,
-                    onClick: () => run("review"),
-                  },
-                  "开始预审",
-                ),
-                h("button", { type: "button", style: s.btnGhost, onClick: copy }, "复制指令"),
-                h(
-                  "a",
-                  { style: { ...s.link, marginLeft: "auto" }, href: WIKI_URL, target: "_blank", rel: "noreferrer" },
-                  "打开知识库 ↗",
-                ),
-                h("span", { style: { ...s.status, color: statusColor }, role: "status" }, status.text),
-              ),
-            ),
-          ),
-          h(Section, { title: "出稿链路", meta: "渲染与发布是两个独立工具" }, h(Chain)),
-          h(
-            Section,
-            { title: "业务流 1 · 创建技术文档", meta: "8 步 · 每步先过门禁" },
-            h(StepTable, { steps: DRAFT_STEPS }),
-          ),
-          h(
-            Section,
-            { title: "业务流 2 · 技术资料 AI 预审", meta: "5 步 · 只出待确认问题" },
-            h(StepTable, { steps: REVIEW_STEPS }),
-          ),
-          h(Section, { title: "知识库落位", meta: "当前实际结构" }, h(Tree)),
           h(
             "div",
-            { style: s.note },
-            "工具：",
-            h("span", { style: s.code }, "jswj_ping"),
-            " / ",
-            h("span", { style: s.code }, "jswj_wiki_list"),
-            " / ",
-            h("span", { style: s.code }, "jswj_doc_read"),
-            " / ",
-            h("span", { style: s.code }, "jswj_wiki_create"),
-            " / ",
-            h("span", { style: s.code }, "jswj_doc_append"),
-            " / ",
-            h("span", { style: s.code }, "jswj_render_docx"),
-            " / ",
-            h("span", { style: s.code }, "jswj_publish_docx"),
-            "。页面只负责发起，执行与确认都在对话里完成。",
+            { style: s.head },
+            h("button", { style: s.btnGhost, onClick: () => setScreen("list") }, "← 任务列表"),
+            h("h1", { style: s.h1 }, title),
+            h("span", { style: s.badge }, flow === "review" ? "预审" : "起草"),
+            h("span", { style: s.mono }, task.id),
+            h(
+              "div",
+              { style: s.actionsRow },
+              h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
+            ),
+          ),
+          h(
+            "div",
+            { style: s.layout },
+            h(
+              "aside",
+              { style: s.rail },
+              h("div", { style: s.railTitle }, title),
+              h("div", { style: s.railMeta }, `${flow === "review" ? "技术资料预审" : "技术文件起草"} · ${step}/${names.length}`),
+              names.map((name, i) => {
+                const index = i + 1;
+                const current = index === step;
+                const done = index < step || task.status === "completed";
+                return h(
+                  "div",
+                  {
+                    key: name,
+                    style: { ...s.stepItem, ...(current ? s.stepCurrent : done ? s.stepDone : s.stepLocked) },
+                  },
+                  h("span", { style: s.stepIndex }, done && !current ? "✓" : String(index).padStart(2, "0")),
+                  h("span", null, name),
+                );
+              }),
+            ),
+            h(
+              "main",
+              { style: s.card },
+              h("div", { style: s.cardHead }, `${flow === "review" ? "R" : "D"}${step} · 第 ${step} 步 / 共 ${names.length} 步`),
+              h("h2", { style: s.cardTitle }, names[step - 1]),
+              h("p", { style: s.cardDesc }, STEP_DESC[flow][step - 1] || ""),
+              stepBody(),
+            ),
           ),
         ),
       );
@@ -509,27 +1087,10 @@ window.__ModuleLoader__.load({
       const size = props && props.size ? props.size : 16;
       return h(
         "span",
-        {
-          style: {
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: size,
-            height: size,
-            color: props && props.active ? C.brand : "currentColor",
-          },
-        },
+        { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, color: props && props.active ? C.brand : "currentColor" } },
         h(
           "svg",
-          {
-            width: size,
-            height: size,
-            viewBox: "0 0 16 16",
-            fill: "none",
-            stroke: "currentColor",
-            strokeWidth: 1.4,
-            "aria-hidden": true,
-          },
+          { width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.4, "aria-hidden": true },
           h("rect", { x: 3, y: 1.5, width: 10, height: 13, rx: 1.6 }),
           h("path", { d: "M5.5 5h5M5.5 8h5M5.5 11h2.6" }),
         ),
@@ -550,31 +1111,8 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function draftPrompt(form) {
-      return [
-        "【JSWJ_DraftbyDSH · 业务流1：创建技术文档】",
-        "请加载 jswj-draftbydsh 技能，先调用 jswj_ping 自检，再从第①步开始。",
-        "已知信息：",
-        `- 文件名称：${form.title.trim()}`,
-        `- 文件类型：${form.type}`,
-        `- 密级：${form.classification}`,
-        `- 层级：${form.tier}`,
-        `- 板块：${form.board}`,
-        "缺失的项请逐轮向我确认（每轮不超过 5 项），门禁未满足前不要进入下一步。",
-      ].join("\n");
-    }
-
-    function reviewPrompt() {
-      return [
-        "【JSWJ_DraftbyDSH · 业务流2：技术资料 AI 预审】",
-        "请加载 jswj-draftbydsh 技能，先调用 jswj_ping 自检，再按第①步确认评审范围与预计耗时。",
-        "我会提供受审文件与评审单；先不要执行预审，等我给出文件。",
-      ].join("\n");
-    }
-
     function apply(ctx) {
-      const startFlow = async (kind, form) => {
-        const content = kind === "draft" ? draftPrompt(form) : reviewPrompt();
+      const startAgent = async (text) => {
         const created = await ctx.remote.session.create({});
         const sessionId = created && created.sessionId;
         if (!sessionId) throw new Error("会话创建失败：未返回 sessionId");
@@ -582,47 +1120,18 @@ window.__ModuleLoader__.load({
           requestId: requestId(),
           sessionId,
           mode: "queue",
-          content: [{ type: "text", text: content }],
+          content: [{ type: "text", text }],
           clientTimeZone: timeZone(),
         });
         ctx.uiWorkspace.openSession(sessionId);
       };
 
-      const copyCommand = async (form) => {
-        const text = draftPrompt(form);
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-          await navigator.clipboard.writeText(text);
-          return text;
-        }
-        const area = document.createElement("textarea");
-        area.value = text;
-        area.style.position = "fixed";
-        area.style.opacity = "0";
-        document.body.appendChild(area);
-        area.select();
-        document.execCommand("copy");
-        document.body.removeChild(area);
-        return text;
-      };
-
       ctx.slots.inject("main", () =>
-        ctx.slots.register(
-          {
-            name: "main",
-            key: PANEL_ID,
-            inject: () => ({ startFlow, copyCommand }),
-          },
-          JswjPage,
-        ),
+        ctx.slots.register({ name: "main", key: PANEL_ID, inject: () => ({ startAgent }) }, JswjPage),
       );
       ctx.slots.inject("sidebar.panellist", () =>
         ctx.slots.register(
-          {
-            name: "sidebar.panellist",
-            id: PANEL_ID,
-            order: 20,
-            label: () => "技术文件起草",
-          },
+          { name: "sidebar.panellist", id: PANEL_ID, order: 20, label: () => "技术文件起草" },
           JswjIcon,
         ),
       );

@@ -1,6 +1,6 @@
 {
   "name": "@govy/dsh-plugin-jswj-draft",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "JSWJ_DraftbyDSH：技术文件起草与 AI 预审。提供飞书知识库读写、Word 套版出稿与知识库发布工具，以及一个独立流程页。",
@@ -13,6 +13,7 @@
   },
   "files": [
     "lib/index.js",
+    "lib/tasks.js",
     "lib/client.js",
     "python/render_docx.py",
     "template/GY-F003-cleaned.docx",

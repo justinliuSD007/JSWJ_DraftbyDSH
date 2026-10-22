@@ -30,6 +30,8 @@ const { fileURLToPath } = await import("node:url");
 const { join, basename, isAbsolute, extname, dirname } = await import("node:path");
 const { homedir, tmpdir } = await import("node:os");
 
+import { createTask, getTask, listTasks, patchTask, stepsOf, submitStep } from "./tasks.js";
+
 const execFileAsync = promisify(execFile);
 
 /** 租户令牌缓存：提前 5 分钟过期，避免边界失效。 */
@@ -175,6 +177,131 @@ async function pollMoveTask(cfg, taskId, attempts = 12, delayMs = 1500) {
     }
   }
   return null;
+}
+
+function readJsonBody(req, limit = 1_000_000) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("请求体过大"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+function sendJson(res, status, payload) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  res.end(JSON.stringify(payload));
+}
+
+/**
+ * 页面唯一的数据入口：任务读写、门禁推进、文档解析、发布。
+ * 只接受同源页面发起的 POST，并要求 x-jswj 头，避免其它本地页面顺手调用。
+ */
+async function handleJswjRequest(req, res, { ctx, webServer }) {
+  try {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "只支持 POST" });
+      return;
+    }
+    if (req.headers["x-jswj"] !== "1") {
+      sendJson(res, 403, { ok: false, error: "缺少 x-jswj 头" });
+      return;
+    }
+    const origin = webServer.getOrigin();
+    if (req.headers.origin && req.headers.origin !== origin) {
+      sendJson(res, 403, { ok: false, error: "跨源请求被拒绝" });
+      return;
+    }
+
+    const body = JSON.parse(await readJsonBody(req));
+    const tool = (toolName) => {
+      const found = ctx.tools.get(toolName);
+      if (!found) throw new Error(`工具不可用：${toolName}`);
+      return found;
+    };
+
+    let value;
+    switch (String(body.action ?? "")) {
+      case "ping":
+        value = await tool("jswj_ping").execute({}, {});
+        break;
+      case "tasks.list":
+        value = await listTasks();
+        break;
+      case "tasks.get":
+        value = await getTask(String(body.id ?? ""));
+        break;
+      case "tasks.create":
+        value = await createTask(String(body.flow ?? "draft"));
+        break;
+      case "tasks.patch":
+        value = await patchTask(String(body.id ?? ""), body.patch ?? {});
+        break;
+      case "tasks.step":
+        value = await submitStep(String(body.id ?? ""), Number(body.step), body.data ?? {});
+        break;
+      case "doc.read": {
+        const doc = await tool("jswj_doc_read").execute({ target: String(body.target ?? "") }, {});
+        const content = String(doc.content ?? "");
+        value = {
+          ok: true,
+          title: doc.title ?? "",
+          objToken: doc.objToken ?? "",
+          chars: content.length,
+          preview: content.slice(0, 240),
+        };
+        break;
+      }
+      case "wiki.list": {
+        const listArgs = {};
+        if (body.parent !== undefined && body.parent !== null && body.parent !== "") listArgs.parent = String(body.parent);
+        value = await tool("jswj_wiki_list").execute(listArgs, {});
+        break;
+      }
+      case "publish": {
+        const markdown = String(body.markdown ?? "");
+        const title = String(body.title ?? "").trim();
+        if (!markdown.trim()) throw new Error("markdown 不能为空");
+        if (!title) throw new Error("title 不能为空");
+        const renderArgs = { markdown, title };
+        if (body.classification) renderArgs.classification = String(body.classification);
+        if (body.outPath) renderArgs.outPath = String(body.outPath);
+        const render = await tool("jswj_render_docx").execute(renderArgs, {});
+        const publishArgs = { filePath: render.path };
+        if (body.parent) publishArgs.parent = String(body.parent);
+        if (body.name) publishArgs.name = String(body.name);
+        const published = await tool("jswj_publish_docx").execute(publishArgs, {});
+        if (body.id) {
+          await patchTask(String(body.id), {
+            data: {
+              publish: {
+                url: published.url,
+                nodeToken: published.wikiToken,
+                filePath: render.path,
+                at: new Date().toISOString(),
+              },
+            },
+          });
+        }
+        value = { ...published, path: render.path };
+        break;
+      }
+      default:
+        throw new Error(`未知 action：${String(body.action ?? "(空)")}`);
+    }
+    sendJson(res, 200, { ok: true, value });
+  } catch (err) {
+    sendJson(res, 200, { ok: false, error: String((err && err.message) || err) });
+  }
 }
 
 function apply(ctx, config = {}) {
@@ -712,6 +839,78 @@ function apply(ctx, config = {}) {
       },
     }),
   );
+
+  // ---------------------------------------------------------------- 任务状态
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_task_get",
+      description:
+        "读取 JSWJ 任务的状态（步骤、基本信息、资料、大纲、生成/自检/修订/出稿结果）。页面发起的任务会用任务号指代，助手执行前后都应先读任务。",
+      parameters: {
+        taskId: { type: "string", required: true, description: "任务号，形如 DOC-20261022-001 或 REV-20261022-001" },
+      },
+      async execute(args) {
+        const taskId = String(args.taskId ?? "").trim();
+        if (!taskId) fail("taskId 不能为空");
+        return { task: await getTask(taskId) };
+      },
+      output: {
+        schema: objectSchema({ task: { type: "object", additionalProperties: true, description: "任务对象" } }),
+        render: (_args, v) => text(JSON.stringify(v.task, null, 2)),
+      },
+    }),
+  );
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_task_update",
+      description:
+        "更新 JSWJ 任务状态。patch 是 JSON 对象字符串，可包含 data（与现有 data 浅合并）、step、status。助手完成生成、自检、预审、修订后，用本工具把结果写回任务，页面据此推进。",
+      parameters: {
+        taskId: { type: "string", required: true, description: "任务号" },
+        patch: {
+          type: "string",
+          required: true,
+          description:
+            'JSON 对象字符串，例如 {"data":{"generation":{"status":"done","note":"已生成 8 章"}}} 或 {"data":{"selfcheck":{"status":"clean","items":[]}}}',
+        },
+      },
+      async execute(args) {
+        const taskId = String(args.taskId ?? "").trim();
+        if (!taskId) fail("taskId 不能为空");
+        let patch;
+        try {
+          patch = JSON.parse(String(args.patch ?? "{}"));
+        } catch {
+          fail('patch 不是合法 JSON，请传对象字符串，例如 {"data":{...}}');
+        }
+        if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+          fail("patch 必须是 JSON 对象");
+        }
+        return { task: await patchTask(taskId, patch) };
+      },
+      output: {
+        schema: objectSchema({ task: { type: "object", additionalProperties: true, description: "更新后的任务" } }),
+        render: (_args, v) => text(JSON.stringify(v.task, null, 2)),
+      },
+    }),
+  );
+
+  // ---------------------------------------------------------------- 页面数据通道
+
+  const webServer = ctx.get("webServer");
+  if (webServer) {
+    ctx.effect(
+      () =>
+        webServer.register({
+          kind: "exact",
+          path: "/api/jswj",
+          handler: (req, res) => handleJswjRequest(req, res, { ctx, webServer }),
+        }),
+      "jswj: page data route",
+    );
+  }
 }
 
 export { apply, inject, name };

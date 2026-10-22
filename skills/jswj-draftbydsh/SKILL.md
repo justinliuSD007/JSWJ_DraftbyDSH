@@ -27,6 +27,27 @@ description: 执行「JSWJ_DraftbyDSH」技术文件起草与 AI 预审两条业
 | `jswj_doc_append` | 向文档追加纯文本段落 | `target`、`content` |
 | `jswj_render_docx` | Markdown → GY-F003 Word | `title`、`markdown` 或 `sourcePath`、`baseDir?`、`classification?` |
 | `jswj_publish_docx` | .docx 上传并移入知识库 | `filePath`、`parent?`、`name?` |
+| `jswj_task_get` | 读取页面任务状态 | `taskId` |
+| `jswj_task_update` | 把生成/自检/预审/修订结果写回任务 | `taskId`、`patch`（JSON 字符串） |
+
+## 页面任务（分步向导）
+
+页面发起的任务以 `【JSWJ 任务 DOC-xxxx · 第 N 步：xxx】` 开头。处理顺序：
+
+1. 调 `jswj_task_get` 读取任务，确认 `flow`、`step` 与已有 `data`；
+2. 只执行当前 `step` 要求的工作，不越过当前步去做后面的步骤；
+3. 完成后调 `jswj_task_update` 写回结果，用户回页面点「刷新」继续。
+
+写回形状（patch 是 JSON 对象字符串）：
+
+| 步骤 | 写回 |
+|---|---|
+| ⑤ 生成 | `{"data":{"generation":{"status":"done","note":"8 章已生成","markdown":"# 标题\n..."}}}` |
+| ⑥ 自检 | `{"data":{"selfcheck":{"status":"clean","items":[]}}}`；有问题则 `status:"blocked"`，`items:[{severity:"严重"或"建议",location,problem,basis}]` |
+| ⑦ 修订 | `{"data":{"revision":{"round":1,"items":[{severity,location,problem,action}]}}}`（`confirmed` 由用户在页面勾选） |
+| ④ 预审 | `{"data":{"review":{"issues":[{severity:"严重"或"建议",location,problem,basis,suggestion}]}}}` |
+
+任务文件在 `~/.dsh/jswj-tasks/<任务号>.json`，不要手工改；只通过工具读写。
 
 ## 知识库落位
 
