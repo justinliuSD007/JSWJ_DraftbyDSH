@@ -234,7 +234,7 @@ function apply(ctx, config = {}) {
       },
       output: {
         schema: objectSchema({
-          ok: str("配置是否可用", true),
+          ok: { type: "boolean", description: "配置是否可用", required: true },
           spaceId: nullableStr("知识空间 ID"),
           spaceName: nullableStr("知识空间名称"),
           rootNodes: {

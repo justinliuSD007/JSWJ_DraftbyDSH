@@ -75,6 +75,8 @@ skills/jswj-draftbydsh/      Skill：两条业务流、门禁、出稿规范、�
 - `node --check` 两个入口通过。
 - 自测覆盖 ping → 列节点 → 读模板 → 渲染 176 KB Word → 上传 → 移入知识库 → 返回链接，测试节点已清理。
 - `main`（key `jswj-draft`）与 `sidebar.panellist`（id `jswj-draft`）槽位注册为 `active`。
+- 实机工具通道调用 `jswj_ping` 成功：空间名「技术资料起草库」、三个根节点、出稿父节点、
+  Python 与模板状态均正确，证明凭据由 profile 覆盖层生效。
 - 浏览器中的实际视觉呈现未做自动化截图验证。
 
 ## 安全
