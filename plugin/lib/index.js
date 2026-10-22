@@ -437,7 +437,23 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         if (!controller) throw new Error("sessionController 不可用，无法新建会话");
         const text = String(body.text ?? "").trim();
         if (!text) throw new Error("text 不能为空");
-        const created = await controller.create({});
+
+        // 固定使用「技术文件起草」工作区：不存在则创建，所有任务会话都归到这里。
+        let workspaceId;
+        const registry = ctx.get("workspaceRegistry");
+        if (registry) {
+          const existing = registry.list().find((workspace) => workspace.title === "技术文件起草");
+          if (existing) {
+            workspaceId = existing.id;
+          } else {
+            const dir = join(homedir(), "技术文件起草");
+            await mkdir(dir, { recursive: true });
+            const workspace = await registry.create(dir, "技术文件起草");
+            workspaceId = workspace.id;
+          }
+        }
+
+        const created = await controller.create(workspaceId ? { workspaceId } : {});
         const sessionId = created && created.sessionId;
         if (!sessionId) throw new Error("创建会话失败：未返回 sessionId");
         await controller.prompt(
@@ -450,7 +466,14 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           },
           AbortSignal.timeout(30000),
         );
-        value = { sessionId };
+        value = { sessionId, workspaceId: workspaceId ?? null, workspaceTitle: "技术文件起草" };
+        break;
+      }
+      case "session.archive": {
+        const registry = ctx.get("workspaceRegistry");
+        if (!registry) throw new Error("workspaceRegistry 不可用，无法归档会话");
+        await registry.archiveSession(String(body.sessionId ?? ""), { stopActivity: true });
+        value = { sessionId: String(body.sessionId ?? ""), archived: true };
         break;
       }
       case "tasks.delete":
