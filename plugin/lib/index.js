@@ -456,6 +456,17 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const created = await controller.create(workspaceId ? { workspaceId } : {});
         const sessionId = created && created.sessionId;
         if (!sessionId) throw new Error("创建会话失败：未返回 sessionId");
+
+        let renamed = false;
+        if (body.title) {
+          try {
+            await controller.rename({ sessionId, title: String(body.title).trim().slice(0, 120) });
+            renamed = true;
+          } catch {
+            renamed = false;
+          }
+        }
+
         await controller.prompt(
           {
             requestId: crypto.randomUUID(),
@@ -466,7 +477,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           },
           AbortSignal.timeout(30000),
         );
-        value = { sessionId, workspaceId: workspaceId ?? null, workspaceTitle: "技术文件起草" };
+        value = { sessionId, workspaceId: workspaceId ?? null, workspaceTitle: "技术文件起草", renamed };
         break;
       }
       case "session.archive": {

@@ -538,8 +538,9 @@ window.__ModuleLoader__.load({
 
       const handoff = async (step, extra) => {
         await run(async () => {
+          const sessionTitle = form.basic?.name || form.review?.file?.title || task.id;
           await Promise.race([
-            props.startAgent(promptFor(task, step, extra)),
+            props.startAgent(promptFor(task, step, extra), sessionTitle),
             new Promise((_, reject) => setTimeout(() => reject(new Error("投递超时，请用「复制指令」粘贴到对话中")), 20000)),
           ]);
           setNotice("已新建会话并投递任务号；助手完成后回本页点「刷新」。");
@@ -714,6 +715,11 @@ window.__ModuleLoader__.load({
       const step = Number(task.step);
       const title = task.data?.basic?.name || "未命名";
       const set = (patch) => setForm((current) => ({ ...current, ...patch }));
+      const growHeight = (el) => {
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = `${el.scrollHeight}px`;
+      };
       const setBasic = (key) => (e) => set({ basic: { ...form.basic, [key]: e.target.value } });
       const setAttrs = (key) => (e) => set({ attrs: { ...form.attrs, [key]: e.target.value } });
 
@@ -988,13 +994,16 @@ window.__ModuleLoader__.load({
                           "div",
                           { style: { display: "flex", gap: 6, alignItems: "flex-start" } },
                           h("textarea", {
+                            ref: growHeight,
+                            onInput: (e) => growHeight(e.target),
                             style: {
                               ...s.chapterInput,
-                              height: 52,
+                              height: "auto",
                               minHeight: 52,
                               padding: "6px 8px",
                               lineHeight: 1.5,
-                              resize: "vertical",
+                              resize: "none",
+                              overflow: "hidden",
                               fontFamily: "inherit",
                             },
                             value: (c.points || []).join("\n"),
@@ -1625,7 +1634,7 @@ window.__ModuleLoader__.load({
               "div",
               { style: s.actionsRow },
               h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
-              h("button", { style: s.dangerBtn, onClick: () => setConfirmId(task.id) }, "删除任务"),
+              h("button", { style: { ...s.btnSecondary, borderColor: C.err, color: C.err }, onClick: () => setConfirmId(task.id) }, "删除任务"),
             ),
           ),
           confirmId === task.id
@@ -1633,7 +1642,7 @@ window.__ModuleLoader__.load({
                 "div",
                 { style: s.dangerBar },
                 h("span", null, `删除任务 ${task.id}？删除后不可恢复；已出稿文件与上传资料不会被删除。`),
-                h("button", { style: s.dangerBtn, onClick: () => removeTask(task.id) }, "确认删除"),
+                h("button", { style: { ...s.btnSecondary, borderColor: C.err, color: C.err }, onClick: () => removeTask(task.id) }, "确认删除"),
                 h("button", { style: s.btnSecondary, onClick: () => setConfirmId("") }, "取消"),
               )
             : null,
@@ -1716,8 +1725,8 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      const startAgent = async (text) => {
-        const started = await call("session.start", { text, timeZone: timeZone() });
+      const startAgent = async (text, title) => {
+        const started = await call("session.start", { text, timeZone: timeZone(), title });
         const sessionId = started && started.sessionId;
         if (!sessionId) throw new Error("创建会话失败：未返回 sessionId");
         ctx.uiWorkspace.openSession(sessionId);
