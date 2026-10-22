@@ -49,8 +49,39 @@ async function readJson(id) {
   }
 }
 
+function isEmptyTask(task) {
+  if (task.status !== "active" || Number(task.step) !== 1) return false;
+  const d = task.data || {};
+  if (task.flow === "review") {
+    return !d.review?.confirmed && !d.review?.file?.ok && (d.review?.issues ?? []).length === 0;
+  }
+  return (
+    !String(d.basic?.name ?? "").trim() &&
+    !String(d.basic?.number ?? "").trim() &&
+    (d.sources ?? []).length === 0 &&
+    (d.outline?.chapters ?? []).length === 0 &&
+    !d.draft?.ready &&
+    !d.publish?.url
+  );
+}
+
+async function purgeEmptyTasks() {
+  const names = await readdir(DIR).catch(() => []);
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    const path = join(DIR, name);
+    try {
+      const task = JSON.parse(await readFile(path, "utf8"));
+      if (isEmptyTask(task)) await unlink(path);
+    } catch {
+      /* 损坏文件留给人工处理 */
+    }
+  }
+}
+
 export async function listTasks() {
   await ensureDir();
+  await purgeEmptyTasks();
   const names = await readdir(DIR).catch(() => []);
   const tasks = [];
   for (const name of names) {
