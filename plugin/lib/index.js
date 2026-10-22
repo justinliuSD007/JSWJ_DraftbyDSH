@@ -448,11 +448,18 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             }
           }
         }
+        let summarySync = null;
         if (updated.status === "completed") {
-          await patchTask(updated.id, { archivedSessions });
+          try {
+            summarySync = await syncSummary(cfg, updated);
+          } catch (err) {
+            summarySync = { ok: false, error: String((err && err.message) || err) };
+          }
+          await patchTask(updated.id, { archivedSessions, summarySync });
           updated.archivedSessions = archivedSessions;
+          updated.summarySync = summarySync;
         }
-        value = { ...updated, archivedSessions };
+        value = { ...updated, archivedSessions, summarySync };
         break;
       }
       case "session.start": {
@@ -645,6 +652,14 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         };
         break;
       }
+      case "summary.sync": {
+        const task = await getTask(String(body.id ?? ""));
+        if (task.status !== "completed") throw new Error("任务尚未完成，不能同步总结");
+        const summarySync = await syncSummary(cfg, task);
+        await patchTask(task.id, { summarySync });
+        value = { ...task, summarySync };
+        break;
+      }
       case "tasks.delete":
         value = await deleteTask(String(body.id ?? ""));
         break;
@@ -753,6 +768,131 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
   }
 }
 
+const SUMMARY_FIELDS = [
+  "任务号",
+  "文件名称",
+  "文件类型",
+  "层级",
+  "板块",
+  "归档位置",
+  "开始时间",
+  "完成时间",
+  "总耗时",
+  "修订次数",
+  "参考资料数",
+  "出稿文件",
+  "相关会话数",
+];
+
+function textOf(value) {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.map((item) => (typeof item === "string" ? item : item?.text ?? "")).join("");
+  if (typeof value === "object") return value.text ?? "";
+  return String(value);
+}
+
+function readableTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function readableDuration(start, end) {
+  const from = new Date(start).getTime();
+  const to = new Date(end).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return "";
+  const minutes = Math.max(1, Math.round((to - from) / 60000));
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours} 小时${rest ? ` ${rest} 分` : ""}`;
+}
+
+/** 把完成任务的总结写入「文件起草工作总结」多维表格；同任务号更新，不重复插入。 */
+async function syncSummary(cfg, task) {
+  const wikiToken = String(cfg.summaryWikiToken ?? "").trim();
+  let appToken = String(cfg.summaryAppToken ?? "").trim();
+  let tableId = String(cfg.summaryTableId ?? "").trim();
+  if (!appToken && wikiToken) {
+    const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(wikiToken)}`);
+    appToken = String(node?.node?.obj_token ?? "");
+  }
+  if (!appToken) return { ok: false, error: "未配置总结多维表格" };
+  if (!tableId) {
+    const tables = await api(cfg, `/bitable/v1/apps/${appToken}/tables?page_size=50`);
+    tableId = String((tables.items ?? [])[0]?.table_id ?? "");
+  }
+  if (!tableId) return { ok: false, error: "多维表格没有数据表" };
+
+  const existing = await api(cfg, `/bitable/v1/apps/${appToken}/tables/${tableId}/fields?page_size=100`);
+  const have = new Set((existing.items ?? []).map((field) => field.field_name));
+  for (const name of SUMMARY_FIELDS) {
+    if (have.has(name)) continue;
+    await api(cfg, `/bitable/v1/apps/${appToken}/tables/${tableId}/fields`, {
+      method: "POST",
+      body: JSON.stringify({ field_name: name, type: 1 }),
+    });
+  }
+
+  const d = task.data || {};
+  const basic = d.basic || {};
+  const attrs = d.attrs || {};
+  const draft = d.draft || {};
+  const publish = d.publish || {};
+  const title = basic.name || d.review?.file?.title || task.id;
+  const finished = task.completedAt || task.updatedAt;
+  const revisions =
+    task.flow === "draft" ? Math.max(0, Number(draft.version || 1) - 1) : (d.review?.issues ?? []).length;
+  const sessions = Object.keys(d.sessions || {}).length;
+  const archiveText = attrs.archive === "polarion" ? `Polarion / ${attrs.project || ""}` : "飞书审批";
+  const summaryText = [
+    `任务号：${task.id}`,
+    `文件名称：${title}`,
+    `文件类型：${basic.type || ""}`,
+    `层级 / 板块：${attrs.tier || ""} / ${attrs.board || ""}`,
+    `归档位置：${archiveText}`,
+    `开始时间：${readableTime(task.createdAt)}`,
+    `完成时间：${readableTime(finished)}`,
+    `总耗时：${readableDuration(task.createdAt, finished)}`,
+    `修订次数：${revisions}`,
+    `参考资料：${(d.sources ?? []).length} 份`,
+    `出稿文件：${publish.url || ""}`,
+    `相关会话：${sessions} 个`,
+  ].join("\n");
+
+  const fields = {
+    任务号: task.id,
+    文件名称: title,
+    文件类型: basic.type || "",
+    层级: attrs.tier || "",
+    板块: attrs.board || "",
+    归档位置: archiveText,
+    开始时间: readableTime(task.createdAt),
+    完成时间: readableTime(finished),
+    总耗时: readableDuration(task.createdAt, finished),
+    修订次数: String(revisions),
+    参考资料数: String((d.sources ?? []).length),
+    出稿文件: publish.url || "",
+    相关会话数: String(sessions),
+    文本: summaryText,
+  };
+
+  const records = await api(cfg, `/bitable/v1/apps/${appToken}/tables/${tableId}/records?page_size=500`);
+  const found = (records.items ?? []).find((record) => textOf(record.fields?.["任务号"]) === task.id);
+  if (found) {
+    await api(cfg, `/bitable/v1/apps/${appToken}/tables/${tableId}/records/${found.record_id}`, {
+      method: "PUT",
+      body: JSON.stringify({ fields }),
+    });
+    return { ok: true, updated: true, recordId: found.record_id, appToken, tableId };
+  }
+  const created = await api(cfg, `/bitable/v1/apps/${appToken}/tables/${tableId}/records`, {
+    method: "POST",
+    body: JSON.stringify({ fields }),
+  });
+  return { ok: true, updated: false, recordId: created?.record?.record_id ?? "", appToken, tableId };
+}
+
 function apply(ctx, config = {}) {
   const cfg = {
     appId: process.env.JSWJ_APP_ID ?? "",
@@ -760,6 +900,9 @@ function apply(ctx, config = {}) {
     spaceId: process.env.JSWJ_SPACE_ID ?? "",
     rootToken: process.env.JSWJ_ROOT_TOKEN ?? "",
     draftRootToken: process.env.JSWJ_DRAFT_ROOT_TOKEN ?? "",
+    summaryWikiToken: process.env.JSWJ_SUMMARY_WIKI_TOKEN ?? "",
+    summaryAppToken: process.env.JSWJ_SUMMARY_APP_TOKEN ?? "",
+    summaryTableId: process.env.JSWJ_SUMMARY_TABLE_ID ?? "",
     pythonPath: process.env.JSWJ_PYTHON ?? "",
     outputDir: "",
     ...config,

@@ -517,6 +517,14 @@ window.__ModuleLoader__.load({
         setScreen("list");
       };
 
+      const resyncSummary = async () => {
+        await run(async () => {
+          await call("summary.sync", { id: task.id });
+          setTask(await call("tasks.get", { id: task.id }));
+          setNotice("任务总结已同步到多维表格。");
+        });
+      };
+
       const fmtTime = (value) => {
         if (!value) return "-";
         const date = new Date(value);
@@ -1997,11 +2005,25 @@ window.__ModuleLoader__.load({
                         ? `本任务相关会话已归档（${archivedCount} 个），可在侧栏归档列表查看。`
                         : "任务已结束；需要再改时从任务列表重新打开，已出稿版本不会自动覆盖。",
                     ),
+                    task.summarySync
+                      ? h(
+                          "div",
+                          { style: { ...s.note, color: task.summarySync.ok ? C.ok : C.err } },
+                          task.summarySync.ok
+                            ? `总结已同步到「文件起草工作总结」${task.summarySync.updated ? "（更新已有记录）" : "（新增记录）"}。`
+                            : `总结同步失败：${task.summarySync.error || "未知错误"}`,
+                        )
+                      : null,
                     h(
                       "div",
                       { style: s.footer },
                       h("button", { style: s.btn, onClick: finishFlow }, "返回任务列表"),
                       h("button", { style: s.btnSecondary, onClick: () => newTask(flow) }, "新建同类任务"),
+                      h(
+                        "button",
+                        { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: resyncSummary },
+                        task.summarySync?.ok ? "重新同步总结" : "同步总结到多维表格",
+                      ),
                     ),
                   )
                 : h(

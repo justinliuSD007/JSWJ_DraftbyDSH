@@ -196,7 +196,7 @@ export async function patchTask(id, patch = {}) {
   if (patch.data && typeof patch.data === "object") {
     task.data = { ...task.data, ...patch.data };
   }
-  for (const key of ["step", "status", "completedAt", "archivedSessions"]) {
+  for (const key of ["step", "status", "completedAt", "archivedSessions", "summarySync"]) {
     if (patch[key] !== undefined) task[key] = patch[key];
   }
   if (patch.step !== undefined) {

@@ -46,10 +46,13 @@ plugin_manager action=install_bundle target=<本目录绝对路径>
     spaceId: "7698962670346636559"
     rootToken: ""
     draftRootToken: "K3NpwxFzribxgOkzFxaczeH7nXf"
+    summaryWikiToken: "P77ZwJyDIiIfoJkmUVccrk7mnfc"
     pythonPath: ""
     outputDir: ""
     fontDir: ""
 ```
+
+`summaryWikiToken` 指向「文件起草工作总结」多维表格；任务完成时自动写入一条汇总，按任务号更新，不重复插入。字段不存在时自动补齐。
 
 `fontDir` 留空时自动查找桌面「鸿蒙字体（对外仅可用该字体）」；字体文件不随插件分发。
 
