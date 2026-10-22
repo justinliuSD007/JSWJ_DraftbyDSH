@@ -51,9 +51,9 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
 
-第 7 步修订：按任务里的 `revision.items` 逐条修改正文，只改指定位置，不整体润色、不补写整节；完成后把 `selfcheck` 置为待检查、`revision.round` 加 1、`revision.confirmed` 置 false，并写回任务。用户回第 6 步重新自检。
+第 6 步自检：只做检查并把 `selfcheck.status` 与 `items` 写回任务，不在这一步修改正文。
 
-第 6 步自检处理：页面要求「交给助手处理问题」时，按 `selfcheck.items` 逐条修正正文，只改问题指出的位置；修正后重新自检，把 `selfcheck.status`（clean / blocked）与仍存在的问题写回任务。仍有必须处理项时保留 blocked 并写明原因。
+第 7 步修订：把 `selfcheck.items` 汇总为 `revision.items`，按条目逐条修改正文，只改指定位置，不整体润色、不补写整节；完成后把 `selfcheck` 置为待检查、`revision.round` 加 1、`revision.confirmed` 置 false，并写回任务。用户回第 6 步重新自检。
 
 ## 知识库落位
 

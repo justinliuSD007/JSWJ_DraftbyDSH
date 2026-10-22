@@ -233,15 +233,15 @@ export function evaluateGate(flow, step, task) {
     }
     if (step === 5) need(d.generation?.status === "done", "G5：生成尚未完成");
     if (step === 6) {
-      const items = d.selfcheck?.items ?? [];
-      const blockers = items.filter((item) => item.severity === "严重");
-      const finished = d.selfcheck?.status && d.selfcheck.status !== "pending";
-      need(finished, "G6：自检尚未完成");
-      need(d.selfcheck?.status === "clean" || blockers.length === 0, `G6：自检仍有 ${blockers.length} 条必须处理项`);
+      // 自检只诊断，不在这里修；查出问题也允许进入第 7 步修订。
+      need(d.selfcheck?.status && d.selfcheck.status !== "pending", "G6：自检尚未完成");
     }
     if (step === 7) {
+      const items = d.selfcheck?.items ?? [];
+      const blockers = items.filter((item) => item.severity === "严重");
       need((d.revision?.round ?? 1) <= 3 || d.revision?.overrunConfirmed, "G7：超过三轮须显式确认继续");
       need(d.revision?.confirmed === true, "G7：请先确认修订要点");
+      need(blockers.length === 0, `G7：自检仍有 ${blockers.length} 条必须处理项，修订完成后再出稿`);
     }
     if (step === 8) need(String(d.publish?.url ?? "").trim(), "G8：文件尚未出稿");
     return;

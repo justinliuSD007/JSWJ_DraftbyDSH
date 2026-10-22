@@ -1247,17 +1247,14 @@ window.__ModuleLoader__.load({
 
             const revisionExtra =
               "请读取 selfcheck.items 与本轮文档，汇总为 revision.items（severity / location / problem / action）并写回任务；不要直接改正文。";
-            const fixExtra =
-              "请按 selfcheck.items 逐条修正文档，只改问题指出的位置，不整体润色、不补写整节；修正后重新自检，把 selfcheck.status（clean / blocked）与仍存在的问题写回任务。仍有必须处理项时保留 blocked 并写明原因。";
             const selfcheckItems = selfcheck.items || [];
             const selfcheckBlockers = selfcheckItems.filter((item) => item.severity === "严重");
-            const selfcheckReady =
-              selfcheck.status === "clean" ||
-              (Boolean(selfcheck.status) && selfcheck.status !== "pending" && selfcheckBlockers.length === 0);
+            const selfcheckFinished = Boolean(selfcheck.status) && selfcheck.status !== "pending";
+            const selfcheckReady = selfcheckFinished && selfcheckBlockers.length === 0;
             const canNext =
               (step === 5 && gen.status === "done") ||
-              (step === 6 && selfcheckReady) ||
-              (step === 7 && revision.confirmed);
+              (step === 6 && selfcheckFinished) ||
+              (step === 7 && revision.confirmed && selfcheckReady);
             return h(
               "div",
               null,
@@ -1266,14 +1263,14 @@ window.__ModuleLoader__.load({
                 ? h(
                     "div",
                     { style: s.note },
-                    `自检还有 ${selfcheckBlockers.length} 条必须处理项：先点「交给助手处理问题」，修正并重新自检后，状态变为 clean 才能进入修订。`,
+                    `自检只诊断，不在这里修改。还有 ${selfcheckBlockers.length} 条必须处理项，点「下一步：修订」统一处理；修订后回来自检复核。`,
                   )
                 : null,
               step === 7
                 ? h(
                     "div",
                     { style: s.note },
-                    "修订只改意见指出的位置。先「让助手汇总修订要点」，确认后点「确认并交给助手修订」执行；助手完成后回第 6 步自检，最多三轮。",
+                    "自检发现的问题在这一步统一修改，自检步不再单独修。先「让助手汇总修订要点」，确认后点「确认并交给助手修订」执行；助手完成后回第 6 步复核，没有必须处理项才能出稿，最多三轮。",
                   )
                 : null,
               h(
@@ -1281,13 +1278,6 @@ window.__ModuleLoader__.load({
                 { style: s.footer },
                 h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
                 h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
-                step === 6 && selfcheckItems.length
-                  ? h(
-                      "button",
-                      { style: s.btnSecondary, onClick: () => handoff(6, fixExtra) },
-                      sessionFor(6) ? "继续处理会话" : "交给助手处理问题",
-                    )
-                  : null,
                 h(
                   "button",
                   { style: s.btnSecondary, onClick: () => handoff(step, step === 7 ? revisionExtra : undefined) },
@@ -1317,8 +1307,10 @@ window.__ModuleLoader__.load({
                     disabled: busy || !canNext,
                     onClick: () => submit(step === 7 ? { revision: { ...revision, confirmed: true } } : {}),
                   },
-                  step === 6 && !selfcheckReady
-                    ? "需先处理自检问题"
+                  step === 6
+                    ? selfcheckFinished
+                      ? "下一步：修订"
+                      : "自检未完成"
                     : step === 7
                       ? "修订完成，去出稿"
                       : "下一步",
