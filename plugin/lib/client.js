@@ -404,6 +404,7 @@ window.__ModuleLoader__.load({
         },
         publishMarkdown: d.publish?.markdown || d.generation?.markdown || "",
         publish: { ...(d.publish || {}) },
+        sessions: { ...(d.sessions || {}) },
         link: "",
         status: "",
       };
@@ -537,18 +538,30 @@ window.__ModuleLoader__.load({
         await savePatch({ step: index });
       };
 
-      const handoff = async (step, extra) => {
+      const sessionTitleFor = (stepNumber) => {
+        const base = (form.basic?.name || form.review?.file?.title || task.id).trim();
+        const labels =
+          flow === "review"
+            ? { 4: "技术资料预审", 5: "预审意见与修订" }
+            : { 4: "大纲与纲要草拟", 5: "正文生成", 6: "草稿自检与修订", 7: "草稿自检与修订" };
+        return `${base} ${labels[stepNumber] || "技术文件起草"}`;
+      };
+
+      const sessionFor = (stepNumber) => form.sessions?.[String(stepNumber)]?.sessionId;
+
+      const handoff = async (step, extra, forceNew = false) => {
+        const existing = sessionFor(step);
+        if (existing && !forceNew) {
+          props.openSession(existing);
+          setNotice("已打开本步已有会话，可继续对话。");
+          return;
+        }
         await run(async () => {
-          const base = (form.basic?.name || form.review?.file?.title || task.id).trim();
-          const labels =
-            flow === "review"
-              ? { 4: "技术资料预审", 5: "预审意见与修订" }
-              : { 4: "大纲与纲要草拟", 5: "正文生成", 6: "草稿自检与修订", 7: "草稿自检与修订" };
-          const sessionTitle = `${base} ${labels[step] || "技术文件起草"}`;
           await Promise.race([
-            props.startAgent(promptFor(task, step, extra), sessionTitle),
+            props.startAgent(promptFor(task, step, extra), sessionTitleFor(step), task.id, step),
             new Promise((_, reject) => setTimeout(() => reject(new Error("投递超时，请用「复制指令」粘贴到对话中")), 20000)),
           ]);
+          setTask(await call("tasks.get", { id: task.id }));
           setNotice("已新建会话并投递任务号；助手完成后回本页点「刷新」。");
         });
       };
@@ -975,7 +988,8 @@ window.__ModuleLoader__.load({
                   "div",
                   { style: { display: "flex", gap: 8 } },
                   h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4, draftExtra) }, "复制拟稿指令"),
-                  h("button", { style: s.btnSecondary, onClick: () => handoff(4, draftExtra) }, "让助手拟稿"),
+                  h("button", { style: s.btnSecondary, onClick: () => handoff(4, draftExtra) }, sessionFor(4) ? "打开本步会话" : "让助手拟稿"),
+                  sessionFor(4) ? h("button", { style: s.btnSecondary, onClick: () => handoff(4, draftExtra, true) }, "新建会话") : null,
                 ),
               ),
               h("div", { style: s.list },
@@ -1068,6 +1082,26 @@ window.__ModuleLoader__.load({
               set({ revision: { ...revision, items: items.map((it, i) => (i === index ? { ...it, ...patch } : it)) } });
             const acceptAll = () =>
               set({ revision: { ...revision, items: items.map((it) => ({ ...it, accepted: true })) } });
+
+            const confirmRevision = () =>
+              run(async () => {
+                await call("tasks.patch", {
+                  id: task.id,
+                  patch: { data: { revision: { ...revision, confirmed: true } } },
+                });
+                await props.startAgent(
+                  promptFor(
+                    task,
+                    7,
+                    "按 revision.items 逐条执行定向修订，只改意见指出的位置，不整体润色、不补写整节；完成后更新 selfcheck 与 revision.round，并写回任务。",
+                  ),
+                  sessionTitleFor(7),
+                  task.id,
+                  7,
+                );
+                setTask(await call("tasks.get", { id: task.id }));
+                setNotice("已确认修订并交给助手；完成后刷新，再回第 6 步自检。");
+              });
 
             const issueRow = (it, index, withCheck) =>
               h(
@@ -1211,6 +1245,8 @@ window.__ModuleLoader__.load({
                       ),
                     );
 
+            const revisionExtra =
+              "请读取 selfcheck.items 与本轮文档，汇总为 revision.items（severity / location / problem / action）并写回任务；不要直接改正文。";
             const canNext =
               (step === 5 && gen.status === "done") ||
               (step === 6 && selfcheck.status === "clean") ||
@@ -1219,6 +1255,13 @@ window.__ModuleLoader__.load({
               "div",
               null,
               data,
+              step === 7
+                ? h(
+                    "div",
+                    { style: s.note },
+                    "修订只改意见指出的位置。先「让助手汇总修订要点」，确认后点「确认并交给助手修订」执行；助手完成后回第 6 步自检，最多三轮。",
+                  )
+                : null,
               h(
                 "div",
                 { style: s.footer },
@@ -1226,18 +1269,34 @@ window.__ModuleLoader__.load({
                 h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
                 h(
                   "button",
-                  { style: s.btnSecondary, onClick: () => handoff(step) },
-                  step === 5 ? "交给助手生成" : step === 6 ? "交给助手自检" : "交给助手修订",
+                  { style: s.btnSecondary, onClick: () => handoff(step, step === 7 ? revisionExtra : undefined) },
+                  sessionFor(step)
+                    ? "打开本步会话"
+                    : step === 5
+                      ? "交给助手生成"
+                      : step === 6
+                        ? "交给助手自检"
+                        : "让助手汇总修订要点",
                 ),
+                sessionFor(step)
+                  ? h(
+                      "button",
+                      { style: s.btnSecondary, onClick: () => handoff(step, step === 7 ? revisionExtra : undefined, true) },
+                      "新建会话",
+                    )
+                  : null,
+                h("button", { style: s.btnSecondary, onClick: () => copyPrompt(step) }, "复制指令"),
+                step === 7
+                  ? h("button", { style: s.btnSecondary, onClick: confirmRevision }, "确认并交给助手修订")
+                  : null,
                 h(
                   "button",
-                  { style: s.btnSecondary, onClick: () => copyPrompt(step) },
-                  "复制指令",
-                ),
-                h(
-                  "button",
-                  { style: { ...s.btn, ...(busy || !canNext ? s.btnDisabled : {}) }, disabled: busy || !canNext, onClick: () => submit(step === 7 ? { revision: { ...revision, confirmed: true } } : {}) },
-                  "下一步",
+                  {
+                    style: { ...s.btn, ...(busy || !canNext ? s.btnDisabled : {}) },
+                    disabled: busy || !canNext,
+                    onClick: () => submit(step === 7 ? { revision: { ...revision, confirmed: true } } : {}),
+                  },
+                  step === 7 ? "修订完成，去出稿" : "下一步",
                 ),
                 error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
               ),
@@ -1463,7 +1522,10 @@ window.__ModuleLoader__.load({
               { style: s.footer },
               h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
               h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
-              h("button", { style: s.btnSecondary, onClick: () => handoff(4) }, "交给助手预审"),
+              h("button", { style: s.btnSecondary, onClick: () => handoff(4) }, sessionFor(4) ? "打开本步会话" : "交给助手预审"),
+              sessionFor(4)
+                ? h("button", { style: s.btnSecondary, onClick: () => handoff(4, undefined, true) }, "新建会话")
+                : null,
               h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4) }, "复制指令"),
               h(
                 "button",
@@ -1601,7 +1663,10 @@ window.__ModuleLoader__.load({
               { style: s.btnSecondary, disabled: busy, onClick: () => savePatch({ data: { review: { ...form.review, issues } } }) },
               "保存处置",
             ),
-            h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。") }, "交给助手协助修订"),
+            h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。") }, sessionFor(5) ? "打开本步会话" : "交给助手协助修订"),
+            sessionFor(5)
+              ? h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。", true) }, "新建会话")
+              : null,
             h("button", { style: s.btnSecondary, onClick: () => copyPrompt(5, "如需协助修订，只改意见指出的位置。") }, "复制指令"),
             h(
               "button",
@@ -1738,15 +1803,25 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      const startAgent = async (text, title) => {
-        const started = await call("session.start", { text, timeZone: timeZone(), title });
+      const startAgent = async (text, title, taskId, step) => {
+        const started = await call("session.start", { text, timeZone: timeZone(), title, taskId, step });
         const sessionId = started && started.sessionId;
         if (!sessionId) throw new Error("创建会话失败：未返回 sessionId");
         ctx.uiWorkspace.openSession(sessionId);
       };
 
       ctx.slots.inject("main", () =>
-        ctx.slots.register({ name: "main", key: PANEL_ID, inject: () => ({ startAgent }) }, JswjPage),
+        ctx.slots.register(
+          {
+            name: "main",
+            key: PANEL_ID,
+            inject: () => ({
+              startAgent,
+              openSession: (sessionId) => ctx.uiWorkspace.openSession(sessionId),
+            }),
+          },
+          JswjPage,
+        ),
       );
       ctx.slots.inject("sidebar.panellist", () =>
         ctx.slots.register(

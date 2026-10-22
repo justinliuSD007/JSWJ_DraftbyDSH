@@ -467,6 +467,20 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           }
         }
 
+        // 记录任务与步骤的会话映射，页面可回到已有会话继续。
+        if (body.taskId && body.step) {
+          const task = await getTask(String(body.taskId));
+          const sessions = {
+            ...(task.data.sessions || {}),
+            [String(body.step)]: {
+              sessionId,
+              title: String(body.title || ""),
+              at: new Date().toISOString(),
+            },
+          };
+          await patchTask(String(body.taskId), { data: { sessions } });
+        }
+
         await controller.prompt(
           {
             requestId: crypto.randomUUID(),

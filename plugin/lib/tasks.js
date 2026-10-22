@@ -167,6 +167,7 @@ export async function createTask(flow) {
       selfcheck: { status: "pending", items: [] },
       revision: { round: 1, items: [], confirmed: false },
       publish: {},
+      sessions: {},
       review: {
         confirmed: false,
         type: "需求规范",
