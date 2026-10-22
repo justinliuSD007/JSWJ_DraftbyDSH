@@ -369,7 +369,7 @@ window.__ModuleLoader__.load({
           "div",
           { style: s.inner },
           h("div", { style: s.eyebrow }, h("span", { style: s.dot }), "JSWJ_DraftbyDSH"),
-          h("h1", { style: s.h1 }, "技术文件起草与 AI 预审"),
+          h("h1", { style: s.h1 }, "技术文件起草"),
           h(
             "p",
             { style: s.lead },
@@ -621,7 +621,7 @@ window.__ModuleLoader__.load({
             name: "sidebar.panellist",
             id: PANEL_ID,
             order: 20,
-            label: () => "技术文件",
+            label: () => "技术文件起草",
           },
           JswjIcon,
         ),
