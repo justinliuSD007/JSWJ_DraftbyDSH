@@ -409,6 +409,7 @@ window.__ModuleLoader__.load({
           ready: Boolean(d.draft?.ready) || Boolean(d.draft?.markdown || d.generation?.markdown),
           markdown: d.draft?.markdown || d.generation?.markdown || "",
           url: d.draft?.url || "",
+          nodeToken: d.draft?.nodeToken || "",
           version: d.draft?.version || 1,
           comments: d.draft?.comments || "",
           confirmed: Boolean(d.draft?.confirmed),
@@ -1478,45 +1479,34 @@ window.__ModuleLoader__.load({
           }
 
           // step 7
-          const markdown =
-            form.draft?.markdown ||
-            form.publishMarkdown ||
-            [
-              `# ${form.basic.name || "技术文件"}`,
-              "",
-              ...form.chapters
-                .filter((c) => c.included)
-                .flatMap((c) => [
-                  `## ${c.no} ${c.title}`,
-                  ...(c.points || []).map((p) => `- ${p}`),
-                  "",
-                ]),
-            ].join("\n");
+          const draft = form.draft || {};
+          const formalName = `${form.basic.number ? `${form.basic.number}-` : ""}${form.basic.name || "技术文件"}.docx`;
           const publish = () =>
             run(async () => {
-              const result = await call("publish", {
-                id: task.id,
-                markdown,
-                title: form.basic.name || "技术文件",
-                classification: form.basic.classification,
-                name: `${form.basic.number ? `${form.basic.number}-` : ""}${form.basic.name || "技术文件"}.docx`,
-              });
-              set({ publish: { url: result.url, nodeToken: result.wikiToken, filePath: result.path } });
+              const result = await call("draft.publish", { id: task.id });
               setTask(await call("tasks.get", { id: task.id }));
+              setNotice(`已按正式文件名出稿：${result.title || formalName}`);
             });
           return h(
             "div",
             null,
-            h("div", { style: s.field },
-              h("label", { style: s.label }, "正文 Markdown（可手改，助手也可写回）"),
-              h("textarea", { style: s.textarea, value: markdown, onChange: (e) => set({ publishMarkdown: e.target.value }) }),
+            h(
+              "div",
+              { style: s.row },
+              h("span", { style: { color: form.publish?.url ? C.ok : C.warn } }, form.publish?.url ? "✓" : "…"),
+              h(
+                "div",
+                { style: s.rowMain },
+                h("div", null, `成稿 v${draft.version || 1}`),
+                h("div", { style: s.mono }, `正式文件名：${formalName}`),
+              ),
             ),
             h(
               "div",
-              { style: s.grid, marginTop: 12 },
-              h("div", { style: s.field }, h("label", { style: s.label }, "文件名称"), h("input", { style: s.input, value: form.basic.name || "", onChange: setBasic("name") })),
-              h("div", { style: s.field }, h("label", { style: s.label }, "密级"), h("input", { style: s.input, value: form.basic.classification || "", onChange: setBasic("classification") })),
+              { style: s.note },
+              `目标目录：技术资料起草库 / 技术资料草稿库 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} / ${form.basic.type || "-"} /`,
             ),
+            h("div", { style: s.note }, "出稿会把同一份成稿按正式文件名落位，并删除旧草稿文件，不会留下两份。"),
             form.publish?.url
               ? h("div", { style: s.note }, "已出稿：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
               : null,
@@ -1524,7 +1514,12 @@ window.__ModuleLoader__.load({
               "div",
               { style: s.footer },
               h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
-              h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: publish }, "渲染并发布"),
+              h("button", { style: s.btnSecondary, onClick: refreshTask, disabled: busy }, "刷新"),
+              h(
+                "button",
+                { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: publish },
+                "出稿（正式命名并归档）",
+              ),
               h(
                 "button",
                 {
@@ -1534,7 +1529,7 @@ window.__ModuleLoader__.load({
                 },
                 "完成出稿",
               ),
-              error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+              error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
             ),
           );
         }

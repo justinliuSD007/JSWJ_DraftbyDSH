@@ -540,7 +540,80 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const render = await tool("jswj_render_docx").execute(renderArgs, {});
         const published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
 
-        await patchTask(task.id, { data: { draft: { ...draft, markdown, version, url: published.url } } });
+        await patchTask(task.id, { data: { draft: { ...draft, markdown, version, previewVersion: version, url: published.url, nodeToken: published.wikiToken } } });
+        value = {
+          url: published.url,
+          nodeToken: published.wikiToken,
+          title: fileName,
+          path: `技术资料起草库 / 技术资料草稿库 / ${task.data.attrs?.tier || "未分级"} / ${task.data.attrs?.board || "未分类"} / ${task.data.basic?.type || "未分类"} /`,
+        };
+        break;
+      }
+      case "draft.publish": {
+        const task = await getTask(String(body.id ?? ""));
+        const draft = task.data.draft || {};
+        const markdown = String(draft.markdown ?? "");
+        if (!markdown.trim()) throw new Error("成稿正文为空，先生成并确认成稿");
+        const baseName = String(task.data.basic?.name || "技术文件");
+        const number = String(task.data.basic?.number || "").trim();
+        const fileName = `${number ? `${number}-` : ""}${baseName}.docx`;
+
+        const library = cfg.draftRootToken || (await ensureWikiChild(cfg, cfg.rootToken || "", "技术资料草稿库"));
+        const tierNode = await ensureWikiChild(cfg, library, String(task.data.attrs?.tier || "未分级"));
+        const boardNode = await ensureWikiChild(cfg, tierNode, String(task.data.attrs?.board || "未分类"));
+        const typeNode = await ensureWikiChild(cfg, boardNode, String(task.data.basic?.type || "未分类"));
+
+        const oldToken = draft.nodeToken || (draft.url ? String(draft.url).split("/").filter(Boolean).pop() : "");
+        const canRename =
+          Boolean(oldToken) && Number(draft.previewVersion) === Number(draft.version) && Boolean(draft.url);
+
+        let published = null;
+        if (canRename) {
+          try {
+            await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}/nodes/${oldToken}/update_title`, {
+              method: "POST",
+              body: JSON.stringify({ title: fileName }),
+            });
+            published = { url: draft.url, wikiToken: oldToken, path: "" };
+          } catch {
+            published = null;
+          }
+        }
+
+        if (!published) {
+          const renderArgs = { markdown, title: baseName };
+          if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
+          const render = await tool("jswj_render_docx").execute(renderArgs, {});
+          published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
+
+          if (oldToken && oldToken !== published.wikiToken) {
+            try {
+              const old = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(oldToken)}`);
+              const obj = old?.node?.obj_token;
+              if (obj) {
+                await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}/nodes/${obj}`, {
+                  method: "DELETE",
+                  body: JSON.stringify({ obj_type: "file", include_children: true }),
+                });
+              }
+            } catch {
+              /* 旧草稿清理失败不影响正式出稿 */
+            }
+          }
+        }
+
+        await patchTask(task.id, {
+          data: {
+            publish: {
+              url: published.url,
+              nodeToken: published.wikiToken,
+              filePath: published.path,
+              title: fileName,
+              at: new Date().toISOString(),
+            },
+            draft: { ...draft, url: published.url, nodeToken: published.wikiToken },
+          },
+        });
         value = {
           url: published.url,
           nodeToken: published.wikiToken,
