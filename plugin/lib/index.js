@@ -782,6 +782,7 @@ const SUMMARY_FIELDS = [
   "参考资料数",
   "出稿文件",
   "相关会话数",
+  "任务总结",
 ];
 
 function textOf(value) {
@@ -874,7 +875,7 @@ async function syncSummary(cfg, task) {
     参考资料数: String((d.sources ?? []).length),
     出稿文件: publish.url || "",
     相关会话数: String(sessions),
-    文本: summaryText,
+    任务总结: summaryText,
   };
 
   const records = await api(cfg, `/bitable/v1/apps/${appToken}/tables/${tableId}/records?page_size=500`);
