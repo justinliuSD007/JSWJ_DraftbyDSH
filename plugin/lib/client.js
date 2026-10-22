@@ -1083,8 +1083,24 @@ window.__ModuleLoader__.load({
             const acceptAll = () =>
               set({ revision: { ...revision, items: items.map((it) => ({ ...it, accepted: true })) } });
 
-            const confirmRevision = () =>
-              run(async () => {
+            const summarizeRevision = () => {
+              const existing = sessionFor(7);
+              if (existing) {
+                return run(async () => {
+                  await call("session.prompt", { sessionId: existing, text: revisionExtra, timeZone: timeZone() });
+                  props.openSession(existing);
+                  setNotice("已请求助手汇总修订要点；完成后刷新。");
+                });
+              }
+              return handoff(7, revisionExtra);
+            };
+
+            const confirmRevision = () => {
+              if (!items.length) {
+                setError("还没有修订要点，请先让助手汇总。");
+                return;
+              }
+              return run(async () => {
                 await call("tasks.patch", {
                   id: task.id,
                   patch: { data: { revision: { ...revision, confirmed: true } } },
@@ -1102,6 +1118,7 @@ window.__ModuleLoader__.load({
                 setTask(await call("tasks.get", { id: task.id }));
                 setNotice("已确认修订并交给助手；完成后刷新，再回第 6 步自检。");
               });
+            };
 
             const issueRow = (it, index, withCheck) =>
               h(
@@ -1232,17 +1249,23 @@ window.__ModuleLoader__.load({
                               items.map((it, i) => issueRow(it, i, true)),
                             ),
                           )
-                        : h("div", { style: s.note }, "还没有修订要点。点「交给助手修订」，助手会汇总本轮要点并写回。"),
-                      h(
-                        "label",
-                        { style: { ...s.row, marginTop: 10, cursor: "pointer" } },
-                        h("input", {
-                          type: "checkbox",
-                          checked: Boolean(revision.confirmed),
-                          onChange: (e) => set({ revision: { ...revision, confirmed: e.target.checked } }),
-                        }),
-                        h("span", null, "我已确认本轮修订要点"),
-                      ),
+                        : h("div", { style: s.note }, "还没有修订要点。点「让助手汇总修订要点」，助手会读取自检问题并写回本轮要点。"),
+                      items.length
+                        ? h(
+                            "label",
+                            { style: { ...s.row, marginTop: 10, cursor: "pointer" } },
+                            h("input", {
+                              type: "checkbox",
+                              checked: Boolean(revision.confirmed),
+                              onChange: (e) => set({ revision: { ...revision, confirmed: e.target.checked } }),
+                            }),
+                            h("span", null, "我已确认本轮修订要点"),
+                          )
+                        : h(
+                            "div",
+                            { style: { display: "flex", justifyContent: "flex-end", marginTop: 8 } },
+                            h("button", { style: s.btnSecondary, onClick: summarizeRevision }, "让助手汇总修订要点"),
+                          ),
                     );
 
             const revisionExtra =
@@ -1298,7 +1321,15 @@ window.__ModuleLoader__.load({
                   : null,
                 h("button", { style: s.btnSecondary, onClick: () => copyPrompt(step) }, "复制指令"),
                 step === 7
-                  ? h("button", { style: s.btnSecondary, onClick: confirmRevision }, "确认并交给助手修订")
+                  ? h(
+                      "button",
+                      {
+                        style: { ...s.btnSecondary, ...(items.length === 0 ? s.btnDisabled : {}) },
+                        disabled: items.length === 0,
+                        onClick: confirmRevision,
+                      },
+                      "确认并交给助手修订",
+                    )
                   : null,
                 h(
                   "button",

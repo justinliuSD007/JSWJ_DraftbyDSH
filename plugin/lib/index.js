@@ -494,6 +494,26 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         value = { sessionId, workspaceId: workspaceId ?? null, workspaceTitle: "技术文件起草", renamed };
         break;
       }
+      case "session.prompt": {
+        const controller = ctx.get("sessionController");
+        if (!controller) throw new Error("sessionController 不可用，无法投递指令");
+        const sessionId = String(body.sessionId ?? "");
+        const text = String(body.text ?? "").trim();
+        if (!sessionId) throw new Error("sessionId 不能为空");
+        if (!text) throw new Error("text 不能为空");
+        await controller.prompt(
+          {
+            requestId: crypto.randomUUID(),
+            sessionId,
+            mode: "queue",
+            content: [{ type: "text", text }],
+            clientTimeZone: body.timeZone ? String(body.timeZone) : undefined,
+          },
+          AbortSignal.timeout(30000),
+        );
+        value = { sessionId };
+        break;
+      }
       case "session.archive": {
         const registry = ctx.get("workspaceRegistry");
         if (!registry) throw new Error("workspaceRegistry 不可用，无法归档会话");
