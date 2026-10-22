@@ -30,7 +30,7 @@ const { fileURLToPath } = await import("node:url");
 const { join, basename, isAbsolute, extname, dirname } = await import("node:path");
 const { homedir, tmpdir } = await import("node:os");
 
-import { createTask, getTask, listTasks, patchTask, stepsOf, submitStep } from "./tasks.js";
+import { createTask, deleteTask, getTask, listTasks, patchTask, stepsOf, submitStep } from "./tasks.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -431,6 +431,9 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         break;
       case "tasks.step":
         value = await submitStep(String(body.id ?? ""), Number(body.step), body.data ?? {});
+        break;
+      case "tasks.delete":
+        value = await deleteTask(String(body.id ?? ""));
         break;
       case "doc.read": {
         const doc = await tool("jswj_doc_read").execute({ target: String(body.target ?? "") }, {});

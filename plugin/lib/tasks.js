@@ -4,7 +4,7 @@
  * 状态放 Host 侧文件（~/.dsh/jswj-tasks/<id>.json），页面与助手都只通过这里读写，
  * 对话只是视图，不是状态。门禁在提交步骤时判定，不通过就不推进。
  */
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -98,6 +98,17 @@ export async function getTask(id) {
   const task = await readJson(id);
   if (!task) throw new Error(`任务不存在：${id}`);
   return task;
+}
+
+/** 删除任务记录。已出稿的文档与已上传的资料不会被删除。 */
+export async function deleteTask(id) {
+  try {
+    await unlink(join(DIR, `${id}.json`));
+  } catch (err) {
+    if (err && err.code === "ENOENT") throw new Error(`任务不存在：${id}`);
+    throw err;
+  }
+  return { id, deleted: true };
 }
 
 export async function createTask(flow) {

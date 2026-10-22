@@ -173,6 +173,30 @@ window.__ModuleLoader__.load({
         fontFamily: "inherit",
         cursor: "pointer",
       },
+      dangerBtn: {
+        height: 28,
+        padding: "0 10px",
+        borderRadius: 6,
+        border: `1px solid ${C.err}`,
+        background: "transparent",
+        color: C.err,
+        fontSize: 12,
+        fontFamily: "inherit",
+        cursor: "pointer",
+      },
+      dangerBar: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        border: `1px solid ${C.err}`,
+        background: "rgba(213,73,65,0.08)",
+        borderRadius: 10,
+        padding: "10px 14px",
+        marginBottom: 14,
+        fontSize: 12.5,
+        color: C.text,
+      },
       groupTitle: {
         display: "flex",
         alignItems: "baseline",
@@ -433,6 +457,7 @@ window.__ModuleLoader__.load({
       const [error, setError] = React.useState("");
       const [notice, setNotice] = React.useState("");
       const [font, setFont] = React.useState({ loading: true });
+      const [confirmId, setConfirmId] = React.useState("");
 
       const loadTasks = async () => {
         try {
@@ -538,6 +563,19 @@ window.__ModuleLoader__.load({
         });
       };
 
+      const removeTask = async (id) => {
+        await run(async () => {
+          await call("tasks.delete", { id });
+          setConfirmId("");
+          if (task && task.id === id) {
+            setTask(null);
+            setScreen("list");
+          }
+          setTasks(await call("tasks.list"));
+          setNotice(`已删除任务 ${id}`);
+        });
+      };
+
       if (screen === "list" || !task || !form) {
         const groups = [
           ["待处理", tasks.filter((item) => item.pending)],
@@ -637,6 +675,22 @@ window.__ModuleLoader__.load({
                                 h("span", null, `${item.id}`),
                                 h("span", null, `${item.step}/${stepsOf(item.flow).length} · ${item.stepName}`),
                                 h("span", null, String(item.updatedAt || "").replace("T", " ").slice(0, 16)),
+                              ),
+                              h(
+                                "div",
+                                {
+                                  style: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 8 },
+                                  onClick: (event) => event.stopPropagation(),
+                                },
+                                confirmId === item.id
+                                  ? h("span", { style: { fontSize: 12, color: C.err } }, "删除后不可恢复")
+                                  : null,
+                                confirmId === item.id
+                                  ? h("button", { style: s.dangerBtn, onClick: () => removeTask(item.id) }, "确认删除")
+                                  : h("button", { style: s.btnGhost, onClick: () => setConfirmId(item.id) }, "删除"),
+                                confirmId === item.id
+                                  ? h("button", { style: s.btnGhost, onClick: () => setConfirmId("") }, "取消")
+                                  : null,
                               ),
                             ),
                           ),
@@ -1571,8 +1625,18 @@ window.__ModuleLoader__.load({
               "div",
               { style: s.actionsRow },
               h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
+              h("button", { style: s.dangerBtn, onClick: () => setConfirmId(task.id) }, "删除任务"),
             ),
           ),
+          confirmId === task.id
+            ? h(
+                "div",
+                { style: s.dangerBar },
+                h("span", null, `删除任务 ${task.id}？删除后不可恢复；已出稿文件与上传资料不会被删除。`),
+                h("button", { style: s.dangerBtn, onClick: () => removeTask(task.id) }, "确认删除"),
+                h("button", { style: s.btnSecondary, onClick: () => setConfirmId("") }, "取消"),
+              )
+            : null,
           h(
             "div",
             { style: s.layout },
