@@ -48,6 +48,8 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 任务文件在 `~/.dsh/jswj-tasks/<任务号>.json`，不要手工改；只通过工具读写。
 
+同一步优先复用任务 `sessions` 里记录的会话；修订与生成都以任务里的 `draft.markdown` 为准，不依赖聊天历史，换会话不会丢正文。
+
 页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
 
 生成：逐章生成正文后，在同一回合内自动自检并修订到没有严重项，再把 `generation.status=done`、成稿正文 `draft.markdown`、`draft.ready=true`、`draft.version` 写回任务。不要让用户逐步确认自检与修订。

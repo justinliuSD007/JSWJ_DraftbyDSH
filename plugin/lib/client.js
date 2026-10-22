@@ -1397,18 +1397,21 @@ window.__ModuleLoader__.load({
                 if (!comments) throw new Error("请先写下需要修改的意见");
                 const next = { ...draft, comments, confirmed: false };
                 await call("tasks.patch", { id: task.id, patch: { data: { draft: next } } });
-                await props.startAgent(
-                  promptFor(
-                    task,
-                    6,
-                    "按 draft.comments 逐条修订成稿，只改意见指出的位置；完成后更新 draft.markdown、draft.version 加 1、draft.ready 置 true、draft.confirmed 置 false，并写回任务。",
-                  ),
-                  sessionTitleFor(6),
-                  task.id,
+                const prompt = promptFor(
+                  task,
                   6,
+                  "按 draft.comments 逐条修订成稿，只改意见指出的位置；完成后更新 draft.markdown、draft.version 加 1、draft.ready 置 true、draft.confirmed 置 false，并写回任务。",
                 );
+                const existing = sessionFor(6);
+                if (existing) {
+                  await call("session.prompt", { sessionId: existing, text: prompt, timeZone: timeZone() });
+                  props.openSession(existing);
+                  setNotice("已把意见投递到本步已有会话；完成后刷新。");
+                } else {
+                  await props.startAgent(prompt, sessionTitleFor(6), task.id, 6);
+                  setNotice("已新建本步会话并提交意见；完成后刷新。");
+                }
                 setTask(await call("tasks.get", { id: task.id }));
-                setNotice("已提交意见并交给助手修订；完成后刷新。");
               });
             const confirmDraft = () =>
               run(async () => {
