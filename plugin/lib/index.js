@@ -1,0 +1,717 @@
+/**
+ * @govy/dsh-plugin-jswj-draft（JSWJ_DraftbyDSH）
+ *
+ * 服务端入口：7 个工具，覆盖「知识库读写 → Word 套版出稿 → 发布回知识库」整条链路。
+ *
+ * 设计约束：
+ * 1. 全部为出站调用，不订阅飞书事件，因此无需公网回调地址。
+ * 2. 配置来自 profile 的 cordis.patch.yml（见 cordis.patch.yml 与本包 README）。
+ * 3. 宿主包 @deepseek-ai/dsh-tools 用动态 import 并兜底，脱离宿主时仍可加载。
+ */
+
+const name = "jswj-draft";
+const inject = ["tools"];
+
+const API = "https://open.feishu.cn/open-apis";
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+let defineTool;
+try {
+  ({ defineTool } = await import("@deepseek-ai/dsh-tools"));
+} catch {
+  // 独立测试环境没有宿主包：defineTool 只是类型辅助，退化为恒等函数。
+  defineTool = (spec) => spec;
+}
+
+const { stat, mkdir, writeFile, unlink, readFile } = await import("node:fs/promises");
+const { execFile } = await import("node:child_process");
+const { promisify } = await import("node:util");
+const { fileURLToPath } = await import("node:url");
+const { join, basename, isAbsolute, extname, dirname } = await import("node:path");
+const { homedir, tmpdir } = await import("node:os");
+
+const execFileAsync = promisify(execFile);
+
+/** 租户令牌缓存：提前 5 分钟过期，避免边界失效。 */
+const tokenCache = { value: "", expiresAt: 0 };
+
+function fail(message) {
+  throw new Error(message);
+}
+
+function requireConfig(cfg, keys) {
+  const missing = keys.filter((k) => !String(cfg[k] ?? "").trim());
+  if (missing.length) {
+    fail(`缺少配置 ${missing.join("、")}。请在 cordis.patch.yml 的 jswj-draft 条目 config 中填写，或设置对应环境变量。`);
+  }
+}
+
+async function request(url, init = {}, retry = true) {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60000) });
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    fail(`飞书返回非 JSON（HTTP ${res.status}）：${raw.slice(0, 300)}`);
+  }
+  // 99991663 = tenant_access_token invalid，换一次令牌即可
+  if (data.code === 99991663 && retry) {
+    tokenCache.expiresAt = 0;
+    return request(url, init, false);
+  }
+  if (data.code !== 0) {
+    const detail = raw.includes("error") ? `（log_id: ${data.error?.log_id ?? "n/a"}）` : "";
+    fail(`飞书接口错误 ${data.code}：${data.msg}${detail}`);
+  }
+  return data.data;
+}
+
+async function getToken(cfg) {
+  requireConfig(cfg, ["appId", "appSecret"]);
+  const now = Date.now();
+  if (tokenCache.value && now < tokenCache.expiresAt) return tokenCache.value;
+
+  const res = await fetch(`${API}/auth/v3/tenant_access_token/internal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ app_id: cfg.appId, app_secret: cfg.appSecret }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await res.json();
+  if (data.code !== 0) fail(`换取 tenant_access_token 失败 ${data.code}：${data.msg}`);
+  tokenCache.value = data.tenant_access_token;
+  tokenCache.expiresAt = now + Math.max(60, (data.expire ?? 7200) - 300) * 1000;
+  return tokenCache.value;
+}
+
+async function api(cfg, path, init = {}) {
+  const token = await getToken(cfg);
+  const headers = { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) };
+  if (init.body !== undefined && typeof init.body === "string") {
+    headers["Content-Type"] = "application/json; charset=utf-8";
+  }
+  return request(`${API}${path}`, { ...init, headers });
+}
+
+/** 从完整链接或纯 token 中取出 wiki 节点 token / 文档 token。 */
+function pickToken(input) {
+  const s = String(input ?? "").trim();
+  const wiki = s.match(/\/wiki\/([A-Za-z0-9]+)/);
+  if (wiki) return wiki[1];
+  const docx = s.match(/\/docx\/([A-Za-z0-9]+)/);
+  if (docx) return docx[1];
+  const file = s.match(/\/file\/([A-Za-z0-9]+)/);
+  if (file) return file[1];
+  return s;
+}
+
+const text = (value) => [
+  { type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) },
+];
+
+/** 工具输出 schema 的最小构造器：必须显式声明 additionalProperties。 */
+const objectSchema = (properties) => ({ type: "object", additionalProperties: false, properties });
+const str = (description, required = false) => ({
+  type: "string",
+  description,
+  ...(required ? { required: true } : {}),
+});
+const nullableStr = (description) => ({ type: "string", description });
+
+function spaceRoot(cfg) {
+  if (!cfg.spaceId) fail("缺少配置 spaceId（知识空间 ID）");
+  return cfg.spaceId;
+}
+
+function resolvePython(cfg) {
+  const dshHome = process.env.DSH_HOME || join(homedir(), ".dsh");
+  const candidates = [];
+  if (process.env.JSWJ_PYTHON) candidates.push(process.env.JSWJ_PYTHON);
+  if (cfg.pythonPath) candidates.push(cfg.pythonPath);
+  candidates.push(
+    join(dshHome, "dsh-runtimes", "dsh-primary-runtime", "dependencies", "python", process.platform === "win32" ? "python.exe" : "python"),
+  );
+  candidates.push(process.platform === "win32" ? "python.exe" : "python3", "python");
+  return candidates;
+}
+
+async function pickPython(cfg) {
+  for (const candidate of resolvePython(cfg)) {
+    if (!isAbsolute(candidate)) return candidate; // PATH 上的 python，交给执行时判断
+    try {
+      const info = await stat(candidate);
+      if (info.isFile()) return candidate;
+    } catch {
+      /* 继续尝试下一个候选 */
+    }
+  }
+  fail("找不到可用的 Python。请安装 Python 3 与 python-docx，或在配置中填写 pythonPath。");
+}
+
+function packageFile(relative) {
+  return fileURLToPath(new URL(`../${relative}`, import.meta.url));
+}
+
+function safeName(input, fallback) {
+  const cleaned = String(input ?? "")
+    .replace(/[\\/:*?"<>|\r\n]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned || fallback).slice(0, 120);
+}
+
+async function pollMoveTask(cfg, taskId, attempts = 12, delayMs = 1500) {
+  for (let i = 0; i < attempts; i++) {
+    await new Promise((r) => setTimeout(r, delayMs));
+    const data = await api(cfg, `/wiki/v2/tasks/${encodeURIComponent(taskId)}?task_type=move`);
+    const task = data.task;
+    const results = task?.move_result ?? [];
+    const node = results.find((r) => r?.node)?.node;
+    if (node) return node;
+    const simple = task?.simple_task_result;
+    if (simple?.status && simple.status !== "success" && simple.status !== "processing") {
+      fail(`移动任务失败：${simple.status}${simple.status_msg ? `（${simple.status_msg}）` : ""}`);
+    }
+  }
+  return null;
+}
+
+function apply(ctx, config = {}) {
+  const cfg = {
+    appId: process.env.JSWJ_APP_ID ?? "",
+    appSecret: process.env.JSWJ_APP_SECRET ?? "",
+    spaceId: process.env.JSWJ_SPACE_ID ?? "",
+    rootToken: process.env.JSWJ_ROOT_TOKEN ?? "",
+    draftRootToken: process.env.JSWJ_DRAFT_ROOT_TOKEN ?? "",
+    pythonPath: process.env.JSWJ_PYTHON ?? "",
+    outputDir: "",
+    ...config,
+  };
+
+  // ---------------------------------------------------------------- 配置自检
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_ping",
+      description:
+        "检查 JSWJ_DraftbyDSH 的配置是否可用：飞书凭据、知识空间、根节点、Python 运行时与 GY-F003 模板。任何出稿或读写操作前先调用它。",
+      parameters: {},
+      async execute() {
+        const space = cfg.spaceId ? await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}`) : null;
+        const roots = cfg.spaceId
+          ? await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}/nodes?page_size=50`)
+          : { items: [] };
+
+        const python = await pickPython(cfg).catch((err) => `不可用：${err.message}`);
+        const templatePath = packageFile("template/GY-F003-cleaned.docx");
+        let templateOk = false;
+        try {
+          templateOk = (await stat(templatePath)).isFile();
+        } catch {
+          templateOk = false;
+        }
+
+        return {
+          ok: true,
+          spaceId: cfg.spaceId || "",
+          spaceName: space?.space?.name ?? "",
+          rootNodes: (roots.items ?? []).map((n) => ({
+            title: n.title,
+            token: n.node_token,
+            type: n.obj_type,
+            hasChild: Boolean(n.has_child),
+          })),
+          draftRootToken: cfg.draftRootToken || "",
+          config: {
+            appId: cfg.appId ? `${String(cfg.appId).slice(0, 8)}…` : "",
+            appSecret: cfg.appSecret ? "已配置" : "缺失",
+            spaceId: cfg.spaceId || "缺失",
+          },
+          python: String(python),
+          template: { path: templatePath, exists: templateOk },
+        };
+      },
+      output: {
+        schema: objectSchema({
+          ok: str("配置是否可用", true),
+          spaceId: nullableStr("知识空间 ID"),
+          spaceName: nullableStr("知识空间名称"),
+          rootNodes: {
+            type: "array",
+            description: "根级节点列表",
+            items: objectSchema({
+              title: str("节点标题", true),
+              token: str("节点 token", true),
+              type: str("对象类型", true),
+              hasChild: { type: "boolean", description: "是否有子节点" },
+            }),
+          },
+          draftRootToken: nullableStr("出稿默认父节点 token"),
+          config: objectSchema({
+            appId: nullableStr("App ID 掩码"),
+            appSecret: str("App Secret 状态", true),
+            spaceId: str("空间 ID 状态", true),
+          }),
+          python: str("Python 可执行路径或错误信息", true),
+          template: objectSchema({
+            path: str("模板绝对路径", true),
+            exists: { type: "boolean", description: "模板是否存在" },
+          }),
+        }),
+        render: (_args, v) =>
+          text(
+            [
+              `知识空间：${v.spaceName ?? "未配置"}（${v.spaceId ?? "-"}）`,
+              `根节点：${v.rootNodes.map((n) => `${n.title}[${n.type}]`).join("、") || "无"}`,
+              `出稿默认父节点：${v.draftRootToken ?? "未配置"}`,
+              `Python：${v.python}`,
+              `GY-F003 模板：${v.template.exists ? "已就绪" : "缺失"}`,
+            ].join("\n"),
+          ),
+      },
+    }),
+  );
+
+  // ---------------------------------------------------------------- 知识库导航
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_wiki_list",
+      description:
+        "列出飞书知识库某个节点下的直接子节点（标题、token、类型、是否有子节点）。用于确认起草库、模板库、出稿库的落位路径。parent 省略时使用配置的 rootToken。",
+      parameters: {
+        parent: { type: "string", description: "父节点 token 或 wiki 链接；省略则用配置中的 rootToken" },
+      },
+      async execute(args) {
+        const space = spaceRoot(cfg);
+        const parent = pickToken(args.parent ?? cfg.rootToken);
+        const query = parent ? `&parent_node_token=${encodeURIComponent(parent)}` : "";
+        const data = await api(cfg, `/wiki/v2/spaces/${space}/nodes?page_size=50${query}`);
+        return {
+          parent: parent || "",
+          count: (data.items ?? []).length,
+          items: (data.items ?? []).map((n) => ({
+            title: n.title,
+            token: n.node_token,
+            type: n.obj_type,
+            hasChild: Boolean(n.has_child),
+          })),
+        };
+      },
+      output: {
+        schema: objectSchema({
+          parent: nullableStr("实际使用的父节点 token"),
+          count: { type: "number", description: "子节点数量" },
+          items: {
+            type: "array",
+            description: "子节点列表",
+            items: objectSchema({
+              title: str("标题", true),
+              token: str("节点 token", true),
+              type: str("对象类型", true),
+              hasChild: { type: "boolean", description: "是否有子节点" },
+            }),
+          },
+        }),
+        render: (_args, v) =>
+          text(
+            v.items.length
+              ? v.items.map((n) => `${n.hasChild ? "▸" : "·"} ${n.title} [${n.type}] ${n.token}`).join("\n")
+              : "该节点下没有子节点。",
+          ),
+      },
+    }),
+  );
+
+  // ---------------------------------------------------------------- 读文档
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_doc_read",
+      description:
+        "读取飞书云文档的纯文本正文。接受 wiki 链接、docx 链接、wiki 节点 token 或文档 token。用于读取参考资料、模板、受审文件。",
+      parameters: {
+        target: { type: "string", required: true, description: "wiki 链接、docx 链接、节点 token 或文档 token" },
+      },
+      async execute(args) {
+        const token = pickToken(args.target);
+        if (!token) fail("没有从 target 中解析出 token，请传知识库文档链接或节点 token。");
+
+        let objToken = token;
+        let title = "";
+        let objType = "docx";
+        try {
+          const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(token)}`);
+          objToken = node.node?.obj_token ?? token;
+          objType = node.node?.obj_type ?? "docx";
+          title = node.node?.title ?? "";
+        } catch {
+          // 不是 wiki 节点，按 docx 文档 token 直接读
+        }
+
+        if (objType === "file") {
+          fail("该节点是文件（如 .docx 附件），不是在线文档，无法读取正文。请改用知识库在线文档，或直接提供本地文件路径。");
+        }
+        if (objType && objType !== "docx") {
+          fail(`暂只支持 docx 在线文档，当前类型为 ${objType}。`);
+        }
+
+        const doc = await api(cfg, `/docx/v1/documents/${objToken}/raw_content`);
+        return { title, objToken, content: doc.content ?? "" };
+      },
+      output: {
+        schema: objectSchema({
+          title: str("文档标题", true),
+          objToken: str("文档 token", true),
+          content: str("正文纯文本", true),
+        }),
+        render: (_args, v) => text(v.title ? `# ${v.title}\n\n${v.content}` : v.content),
+      },
+    }),
+  );
+
+  // ---------------------------------------------------------------- 新建节点
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_wiki_create",
+      description:
+        "在飞书知识库指定父节点下新建一个在线文档节点（docx），返回新节点 token。用于按目录规则创建起草目录、预审任务目录。",
+      parameters: {
+        parent: { type: "string", description: "父节点 token 或 wiki 链接；省略则用配置中的 rootToken" },
+        title: { type: "string", required: true, description: "新节点标题（同时作为文档名）" },
+      },
+      async execute(args) {
+        const title = String(args.title ?? "").trim();
+        if (!title) fail("title 不能为空，请给出新节点的标题。");
+        const space = spaceRoot(cfg);
+        const parent = pickToken(args.parent ?? cfg.rootToken);
+        const body = { obj_type: "docx", node_type: "origin", title };
+        if (parent) body.parent_node_token = parent;
+        const data = await api(cfg, `/wiki/v2/spaces/${space}/nodes`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        return {
+          nodeToken: data.node?.node_token,
+          objToken: data.node?.obj_token,
+          title: data.node?.title ?? title,
+          parent: parent || "",
+        };
+      },
+      output: {
+        schema: objectSchema({
+          nodeToken: nullableStr("新节点 token"),
+          objToken: nullableStr("文档 token"),
+          title: str("节点标题", true),
+          parent: nullableStr("父节点 token"),
+        }),
+        render: (_args, v) => text(v),
+      },
+    }),
+  );
+
+  // ---------------------------------------------------------------- 追加正文
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_doc_append",
+      description:
+        "向飞书在线文档末尾追加纯文本段落，按换行分段。用于写入预审意见、任务说明等短文本；正式出稿请用 jswj_render_docx + jswj_publish_docx。",
+      parameters: {
+        target: { type: "string", required: true, description: "wiki 链接、docx 链接、节点 token 或文档 token" },
+        content: { type: "string", required: true, description: "要追加的文本，每行一段" },
+      },
+      async execute(args) {
+        const token = pickToken(args.target);
+        if (!token) fail("没有从 target 中解析出 token。");
+        const content = String(args.content ?? "");
+        if (!content.trim()) fail("content 不能为空。");
+
+        let docId = token;
+        try {
+          const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(token)}`);
+          docId = node.node?.obj_token ?? token;
+          if (node.node?.obj_type && node.node.obj_type !== "docx") {
+            fail(`该节点类型为 ${node.node.obj_type}，只能向 docx 在线文档追加段落。`);
+          }
+        } catch (err) {
+          if (String(err.message).includes("只能向 docx")) throw err;
+        }
+
+        const lines = content.split(/\r?\n/).filter((line) => line.trim() !== "");
+        const children = lines.map((line) => ({
+          block_type: 2,
+          text: { elements: [{ text_run: { content: line } }], style: {} },
+        }));
+        await api(cfg, `/docx/v1/documents/${docId}/blocks/${docId}/children`, {
+          method: "POST",
+          body: JSON.stringify({ children, index: -1 }),
+        });
+        return { appended: children.length, docId };
+      },
+      output: {
+        schema: objectSchema({
+          appended: { type: "number", description: "追加的段落数" },
+          docId: str("文档 token", true),
+        }),
+        render: (_args, v) => text(v),
+      },
+    }),
+  );
+
+  // ---------------------------------------------------------------- Word 出稿
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_render_docx",
+      description:
+        "把 Markdown 正文渲染成套用 GY-F003 模板的 Word 文档（.docx），返回本地绝对路径。封面、页眉、正文样式、表格与图片由渲染器处理。生成的路径随后交给 jswj_publish_docx 上传。",
+      parameters: {
+        markdown: { type: "string", description: "完整 Markdown 正文；一级标题作为文档标题，二至四级标题映射为正文章节。与 sourcePath 二选一" },
+        sourcePath: { type: "string", description: "本地 Markdown 文件绝对路径；与 markdown 二选一，长文档建议先写文件再传路径" },
+        baseDir: { type: "string", description: "相对图片路径的基准目录；省略时用 sourcePath 所在目录，否则用工作目录" },
+        title: { type: "string", required: true, description: "文件名称，写入封面标题" },
+        classification: { type: "string", description: "密级，如 L2 重要/秘密；默认 L2" },
+        author: { type: "string", description: "编制人，如「张三 2026.10.22」" },
+        checker: { type: "string", description: "校对" },
+        reviewer: { type: "string", description: "审核" },
+        docNumber: { type: "string", description: "文件编号，可空" },
+        version: { type: "string", description: "版本号，默认 A0" },
+        revisionNote: { type: "string", description: "修订说明，默认「1 期方案初版」" },
+        date: { type: "string", description: "修订日期，默认当天（YYYY.MM.DD）" },
+        outPath: { type: "string", description: "输出文件绝对路径；省略则写入配置的 outputDir" },
+      },
+      async execute(args) {
+        const title = String(args.title ?? "").trim();
+        if (!title) fail("title 不能为空，请给出文件名称。");
+
+        let markdown;
+        let mdPath;
+        let temporary = false;
+        if (args.sourcePath) {
+          if (!isAbsolute(String(args.sourcePath))) fail(`sourcePath 需要绝对路径，收到：${args.sourcePath}`);
+          mdPath = String(args.sourcePath);
+          try {
+            markdown = await readFile(mdPath, "utf8");
+          } catch {
+            fail(`Markdown 文件不存在或不可读：${mdPath}`);
+          }
+        } else {
+          markdown = String(args.markdown ?? "");
+          if (!markdown.trim()) fail("markdown 与 sourcePath 至少提供一个。");
+          mdPath = join(tmpdir(), `jswj-${Date.now()}.md`);
+          await writeFile(mdPath, markdown, "utf8");
+          temporary = true;
+        }
+        if (!markdown.trim()) fail("Markdown 内容为空。");
+
+        const baseDir = String(args.baseDir ?? "").trim() || (args.sourcePath ? dirname(String(args.sourcePath)) : process.cwd());
+
+        const template = packageFile("template/GY-F003-cleaned.docx");
+        try {
+          await stat(template);
+        } catch {
+          fail(`GY-F003 模板缺失：${template}`);
+        }
+
+        const python = await pickPython(cfg);
+        const script = packageFile("python/render_docx.py");
+        const outDir = cfg.outputDir || join(homedir(), ".dsh", "jswj-out");
+        await mkdir(outDir, { recursive: true });
+
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        const outPath = args.outPath
+          ? String(args.outPath)
+          : join(outDir, `${safeName(title, "技术文件")}-${stamp}.docx`);
+
+        const cmdArgs = [
+          script,
+          "--md", mdPath,
+          "--out", outPath,
+          "--template", template,
+          "--base-dir", baseDir,
+          "--title", title,
+          "--classification", args.classification ?? "L2 重要/秘密",
+          "--author", args.author ?? "",
+          "--checker", args.checker ?? "待定",
+          "--reviewer", args.reviewer ?? "待定",
+          "--doc-number", args.docNumber ?? "",
+          "--version", args.version ?? "A0",
+          "--revision-note", args.revisionNote ?? "1 期方案初版",
+          "--date", args.date ?? new Date().toLocaleDateString("zh-CN").replace(/\//g, "."),
+        ];
+
+        let stdout = "";
+        try {
+          const result = await execFileAsync(python, cmdArgs, {
+            timeout: 180000,
+            maxBuffer: 8 * 1024 * 1024,
+            encoding: "utf8",
+            env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+          });
+          stdout = result.stdout ?? "";
+        } catch (err) {
+          const detail = (err.stderr || err.stdout || err.message || "").toString().slice(-1200);
+          fail(`Word 渲染失败（Python：${python}）：${detail}`);
+        } finally {
+          if (temporary) await unlink(mdPath).catch(() => {});
+        }
+
+        const line = stdout
+          .split(/\r?\n/)
+          .reverse()
+          .find((l) => l.startsWith("JSWJ_RESULT "));
+        if (!line) fail(`渲染器没有返回结果：${stdout.slice(-800)}`);
+        let payload;
+        try {
+          payload = JSON.parse(line.slice("JSWJ_RESULT ".length));
+        } catch {
+          fail(`渲染器返回结果无法解析：${line.slice(0, 400)}`);
+        }
+        if (!payload.ok) fail(`渲染器报错：${payload.error ?? "未知错误"}`);
+
+        const info = await stat(payload.path);
+        return {
+          path: payload.path,
+          bytes: info.size,
+          blocks: payload.blocks ?? 0,
+          title,
+          template,
+        };
+      },
+      output: {
+        schema: objectSchema({
+          path: str("生成的 .docx 绝对路径", true),
+          bytes: { type: "number", description: "文件字节数" },
+          blocks: { type: "number", description: "解析出的段落块数" },
+          title: str("文件名称", true),
+          template: str("使用的模板路径", true),
+        }),
+        render: (_args, v) => text(`已生成 Word：${v.path}\n大小：${v.bytes} 字节\n段落块：${v.blocks ?? "-"}`),
+      },
+    }),
+  );
+
+  // ---------------------------------------------------------------- 发布到知识库
+
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_publish_docx",
+      description:
+        "把本地 .docx 上传为飞书知识库节点（保留 Word 原文件，可在知识库中下载）。可指定父节点；省略时用配置的 draftRootToken。上传后自动移入知识库并轮询任务结果。",
+      parameters: {
+        filePath: { type: "string", required: true, description: "本地 .docx 绝对路径，通常来自 jswj_render_docx" },
+        parent: { type: "string", description: "目标父节点 token 或 wiki 链接；省略则用配置的 draftRootToken" },
+        name: { type: "string", description: "知识库中的文件名；省略则用本地文件名" },
+      },
+      async execute(args) {
+        const space = spaceRoot(cfg);
+        const filePath = String(args.filePath ?? "").trim();
+        if (!filePath) fail("filePath 不能为空，请传本地 .docx 绝对路径。");
+        if (!isAbsolute(filePath)) fail(`filePath 需要绝对路径，收到：${filePath}`);
+
+        let info;
+        try {
+          info = await stat(filePath);
+        } catch {
+          fail(`文件不存在：${filePath}`);
+        }
+        if (!info.isFile()) fail(`不是文件：${filePath}`);
+        if (extname(filePath).toLowerCase() !== ".docx") {
+          fail(`只支持 .docx，收到：${extname(filePath) || "无扩展名"}`);
+        }
+        if (info.size === 0) fail("文件大小为 0，无法发布。");
+        if (info.size > MAX_UPLOAD_BYTES) {
+          fail(`文件 ${(info.size / 1024 / 1024).toFixed(1)} MB，超过飞书 20 MB 上传上限。请精简图片或拆分文件。`);
+        }
+
+        const fileName = safeName(args.name || basename(filePath), "技术文件.docx");
+        const parent = pickToken(args.parent ?? cfg.draftRootToken);
+        const buffer = await readFile(filePath);
+        const token = await getToken(cfg);
+
+        const form = new FormData();
+        form.append("file_name", fileName);
+        form.append("parent_type", "explorer");
+        form.append("parent_node", "");
+        form.append("size", String(info.size));
+        form.append(
+          "file",
+          new Blob([buffer], {
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          }),
+          fileName,
+        );
+
+        const uploaded = await request(
+          `${API}/drive/v1/files/upload_all`,
+          { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form },
+          true,
+        );
+        const fileToken = uploaded.file_token;
+        if (!fileToken) fail("上传成功但没有返回 file_token。");
+        const host = String(uploaded.url ?? "").match(/^https:\/\/([^/]+)/)?.[1] ?? "feishu.cn";
+
+        const moveBody = { obj_type: "file", obj_token: fileToken };
+        if (parent) moveBody.parent_wiki_token = parent;
+
+        let moved;
+        try {
+          moved = await api(cfg, `/wiki/v2/spaces/${space}/nodes/move_docs_to_wiki`, {
+            method: "POST",
+            body: JSON.stringify(moveBody),
+          });
+        } catch (err) {
+          fail(
+            `文件已上传（file_token: ${fileToken}，${uploaded.url ?? "无预览地址"}），但移入知识库失败：${err.message}。` +
+              `请检查应用是否为知识空间成员，以及目标父节点编辑权限；也可在飞书中手动移动该文件。`,
+          );
+        }
+
+        let wikiToken = moved.wiki_token;
+        if (!wikiToken && moved.task_id) {
+          const node = await pollMoveTask(cfg, moved.task_id);
+          wikiToken = node?.node_token;
+          if (node?.title) {
+            return {
+              wikiToken,
+              objToken: node.obj_token ?? fileToken,
+              title: node.title,
+              url: `https://${host}/wiki/${wikiToken}`,
+              parent: parent || "",
+              size: info.size,
+            };
+          }
+        }
+        if (!wikiToken) {
+          fail(`移动任务已提交（task_id: ${moved.task_id ?? "n/a"}）但未在等待时间内完成。请稍后在知识库中确认，或手动移动。`);
+        }
+
+        return {
+          wikiToken,
+          objToken: fileToken,
+          title: fileName,
+          url: `https://${host}/wiki/${wikiToken}`,
+          parent: parent || "",
+          size: info.size,
+        };
+      },
+      output: {
+        schema: objectSchema({
+          wikiToken: str("知识库节点 token", true),
+          objToken: str("文件 token", true),
+          title: str("知识库中的文件名", true),
+          url: str("知识库节点链接", true),
+          parent: nullableStr("父节点 token"),
+          size: { type: "number", description: "文件字节数" },
+        }),
+        render: (_args, v) =>
+          text(`已发布到知识库：${v.title}\n节点：${v.wikiToken}\n链接：${v.url}\n大小：${v.size} 字节`),
+      },
+    }),
+  );
+}
+
+export { apply, inject, name };

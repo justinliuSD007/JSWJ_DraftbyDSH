@@ -1,0 +1,14 @@
+# 依赖与缓存
+node_modules/
+__pycache__/
+*.pyc
+
+# 本地产物与凭据
+*.log
+.jswj-out/
+appSecret*
+.env
+
+# 系统文件
+.DS_Store
+Thumbs.db

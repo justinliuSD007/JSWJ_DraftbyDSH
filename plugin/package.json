@@ -1,0 +1,34 @@
+{
+  "name": "@govy/dsh-plugin-jswj-draft",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JSWJ_DraftbyDSH：技术文件起草与 AI 预审。提供飞书知识库读写、Word 套版出稿与知识库发布工具，以及一个独立流程页。",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "python/render_docx.py",
+    "template/GY-F003-cleaned.docx",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

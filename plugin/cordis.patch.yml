@@ -1,0 +1,26 @@
+# JSWJ_DraftbyDSH bundle patch.
+#
+# 新增插件必须使用 insert；顶层 `- id:` 形式只有在覆盖已有条目时才有效。
+#
+# 本文件刻意不保存任何凭据。安装后请在 profile 的 cordis.patch.yml 中按 id 覆盖：
+#
+#   - id: jswj-draft
+#     config:
+#       appId: cli_xxxxxxxxxxxx
+#       appSecret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#       spaceId: "7698962670346636559"
+#       draftRootToken: "K3NpwxFzribxgOkzFxaczeH7nXf"
+#
+# 或改用环境变量 JSWJ_APP_ID / JSWJ_APP_SECRET / JSWJ_SPACE_ID /
+# JSWJ_ROOT_TOKEN / JSWJ_DRAFT_ROOT_TOKEN / JSWJ_PYTHON。
+- insert:
+    - id: jswj-draft
+      name: "@govy/dsh-plugin-jswj-draft"
+      config:
+        appId: ""
+        appSecret: ""
+        spaceId: ""
+        rootToken: ""
+        draftRootToken: ""
+        pythonPath: ""
+        outputDir: ""
