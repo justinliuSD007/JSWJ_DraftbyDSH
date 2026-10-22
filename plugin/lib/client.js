@@ -511,6 +511,12 @@ window.__ModuleLoader__.load({
         });
       };
 
+      const finishFlow = async () => {
+        await loadTasks();
+        setTask(null);
+        setScreen("list");
+      };
+
       const newTask = async (flow) => {
         await run(async () => {
           const created = await call("tasks.create", { flow });
@@ -1487,7 +1493,8 @@ window.__ModuleLoader__.load({
           const publish = () =>
             run(async () => {
               const result = await call("draft.publish", { id: task.id });
-              setTask(await call("tasks.get", { id: task.id }));
+              const finished = await call("tasks.step", { id: task.id, step: 7, data: {} });
+              setTask(finished);
               setNotice(`已按正式文件名出稿：${result.title || formalName}`);
             });
           return h(
@@ -1522,15 +1529,6 @@ window.__ModuleLoader__.load({
                 "button",
                 { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: publish },
                 "出稿（正式命名并归档）",
-              ),
-              h(
-                "button",
-                {
-                  style: { ...s.btn, ...(busy || !form.publish?.url ? s.btnDisabled : {}) },
-                  disabled: busy || !form.publish?.url,
-                  onClick: () => submit({}),
-                },
-                "完成出稿",
               ),
               error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
             ),
@@ -1930,17 +1928,47 @@ window.__ModuleLoader__.load({
             h(
               "main",
               { style: s.card },
-              h(
-                "div",
-                { style: s.crumb },
-                `${flow === "review" ? "评审技术资料" : "创建技术资料"} › ${
-                  flow === "review" ? form.review.type || form.basic.type || "需求规范" : form.basic.type || "需求规范"
-                } › ${step} ${names[step - 1]}`,
-              ),
-              h("div", { style: s.cardHead }, `${flow === "review" ? "R" : "D"}${step} · 第 ${step} 步 / 共 ${names.length} 步`),
-              h("h2", { style: s.cardTitle }, names[step - 1]),
-              h("p", { style: s.cardDesc }, STEP_DESC[flow][step - 1] || ""),
-              stepBody(),
+              task.status === "completed"
+                ? h(
+                    React.Fragment,
+                    null,
+                    h(
+                      "div",
+                      { style: s.crumb },
+                      `${flow === "review" ? "评审技术资料" : "创建技术资料"} › 已完成`,
+                    ),
+                    h("h2", { style: s.cardTitle }, "流程已完成"),
+                    h(
+                      "p",
+                      { style: s.cardDesc },
+                      flow === "review" ? "预审意见已处置并归档，流程结束。" : "文档已出稿并落到知识库，流程结束。",
+                    ),
+                    flow === "draft" && form.publish?.url
+                      ? h("div", { style: s.note }, "出稿文件：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
+                      : null,
+                    h("div", { style: s.note }, "需要再改时，可从任务列表重新打开；已出稿的版本不会自动覆盖。"),
+                    h(
+                      "div",
+                      { style: s.footer },
+                      h("button", { style: s.btn, onClick: finishFlow }, "返回任务列表"),
+                      h("button", { style: s.btnSecondary, onClick: () => newTask(flow) }, "新建同类任务"),
+                    ),
+                  )
+                : h(
+                    React.Fragment,
+                    null,
+                    h(
+                      "div",
+                      { style: s.crumb },
+                      `${flow === "review" ? "评审技术资料" : "创建技术资料"} › ${
+                        flow === "review" ? form.review.type || form.basic.type || "需求规范" : form.basic.type || "需求规范"
+                      } › ${step} ${names[step - 1]}`,
+                    ),
+                    h("div", { style: s.cardHead }, `${flow === "review" ? "R" : "D"}${step} · 第 ${step} 步 / 共 ${names.length} 步`),
+                    h("h2", { style: s.cardTitle }, names[step - 1]),
+                    h("p", { style: s.cardDesc }, STEP_DESC[flow][step - 1] || ""),
+                    stepBody(),
+                  ),
             ),
           ),
         ),
