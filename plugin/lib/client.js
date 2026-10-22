@@ -70,6 +70,7 @@ window.__ModuleLoader__.load({
 
     const s = {
       page: {
+        flex: "1 1 auto",
         height: "100%",
         minHeight: 0,
         overflowY: "auto",
