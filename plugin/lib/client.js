@@ -539,7 +539,12 @@ window.__ModuleLoader__.load({
 
       const handoff = async (step, extra) => {
         await run(async () => {
-          const sessionTitle = form.basic?.name || form.review?.file?.title || task.id;
+          const base = (form.basic?.name || form.review?.file?.title || task.id).trim();
+          const labels =
+            flow === "review"
+              ? { 4: "技术资料预审", 5: "预审意见与修订" }
+              : { 4: "大纲与纲要草拟", 5: "正文生成", 6: "草稿自检与修订", 7: "草稿自检与修订" };
+          const sessionTitle = `${base} ${labels[step] || "技术文件起草"}`;
           await Promise.race([
             props.startAgent(promptFor(task, step, extra), sessionTitle),
             new Promise((_, reject) => setTimeout(() => reject(new Error("投递超时，请用「复制指令」粘贴到对话中")), 20000)),
