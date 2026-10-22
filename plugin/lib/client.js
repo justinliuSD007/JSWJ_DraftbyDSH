@@ -806,7 +806,7 @@ window.__ModuleLoader__.load({
           }
 
           if (step === 2) {
-            const path = `技术资料起草库 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} / ${form.basic.type || "-"} /`;
+            const path = `技术资料起草库 / 技术资料草稿库 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} / ${form.basic.type || "-"} /`;
             return h(
               "div",
               null,
@@ -1381,15 +1381,13 @@ window.__ModuleLoader__.load({
             const preview = () =>
               run(async () => {
                 if (!draft.markdown) throw new Error("还没有成稿正文，先让助手生成成稿");
-                const result = await call("publish", {
+                const result = await call("draft.preview", {
+                  id: task.id,
                   markdown: draft.markdown,
-                  title: `${form.basic.name || "技术文件"}-草稿-v${draft.version || 1}`,
-                  classification: form.basic.classification,
-                  name: `${form.basic.name || "技术文件"}-草稿-v${draft.version || 1}.docx`,
+                  version: draft.version,
                 });
-                await call("tasks.patch", { id: task.id, patch: { data: { draft: { ...draft, url: result.url } } } });
                 setTask(await call("tasks.get", { id: task.id }));
-                setNotice("预览稿已生成，可在知识库中查看。");
+                setNotice(`预览稿已生成：${result.path || result.url}`);
               });
             const submitComments = () =>
               run(async () => {

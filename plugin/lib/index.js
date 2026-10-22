@@ -521,6 +521,34 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         value = { sessionId: String(body.sessionId ?? ""), archived: true };
         break;
       }
+      case "draft.preview": {
+        const task = await getTask(String(body.id ?? ""));
+        const draft = task.data.draft || {};
+        const markdown = String(body.markdown ?? draft.markdown ?? "");
+        if (!markdown.trim()) throw new Error("成稿正文为空，先生成成稿再出预览");
+        const version = Number(body.version ?? draft.version ?? 1);
+        const baseName = task.data.basic?.name || "技术文件";
+        const fileName = `${baseName}-草稿-v${version}.docx`;
+
+        const library = cfg.draftRootToken || (await ensureWikiChild(cfg, cfg.rootToken || "", "技术资料草稿库"));
+        const tierNode = await ensureWikiChild(cfg, library, String(task.data.attrs?.tier || "未分级"));
+        const boardNode = await ensureWikiChild(cfg, tierNode, String(task.data.attrs?.board || "未分类"));
+        const typeNode = await ensureWikiChild(cfg, boardNode, String(task.data.basic?.type || "未分类"));
+
+        const renderArgs = { markdown, title: `${baseName}-草稿-v${version}` };
+        if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
+        const render = await tool("jswj_render_docx").execute(renderArgs, {});
+        const published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
+
+        await patchTask(task.id, { data: { draft: { ...draft, markdown, version, url: published.url } } });
+        value = {
+          url: published.url,
+          nodeToken: published.wikiToken,
+          title: fileName,
+          path: `技术资料起草库 / 技术资料草稿库 / ${task.data.attrs?.tier || "未分级"} / ${task.data.attrs?.board || "未分类"} / ${task.data.basic?.type || "未分类"} /`,
+        };
+        break;
+      }
       case "tasks.delete":
         value = await deleteTask(String(body.id ?? ""));
         break;
