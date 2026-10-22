@@ -76,7 +76,22 @@ function summarize(task) {
     updatedAt: task.updatedAt,
     createdAt: task.createdAt,
     stepName: stepsOf(task.flow)[task.step - 1] ?? "已完成",
+    pending: isPending(task),
   };
+}
+
+/** 「待我处理」：预审有未处置意见，或起草到修订步等待确认。 */
+function isPending(task) {
+  if (task.status !== "active") return false;
+  const d = task.data || {};
+  if (task.flow === "review") {
+    const issues = d.review?.issues ?? [];
+    return task.step >= 4 && issues.some((item) => !item.decision);
+  }
+  if (task.flow === "draft") {
+    return task.step === 6 && (d.selfcheck?.items ?? []).length > 0;
+  }
+  return false;
 }
 
 export async function getTask(id) {
@@ -189,7 +204,11 @@ export function evaluateGate(flow, step, task) {
   }
   if (step === 3) need(d.review?.file?.ok === true, "Q3：受审文件尚未解析成功");
   if (step === 4) need((d.review?.issues ?? []).length > 0, "Q4：预审尚未产出意见");
-  if (step === 5) need(d.review?.archived === true, "Q5：意见书尚未存档");
+  if (step === 5) {
+    const undecided = (d.review?.issues ?? []).filter((item) => !item.decision);
+    need(undecided.length === 0, `Q5：还有 ${undecided.length} 条意见未处置（采纳 / 驳回 / 改写）`);
+    need(d.review?.archived === true, "Q5：意见书尚未存档");
+  }
 }
 
 /** 提交当前步骤：合并数据 → 判门禁 → 推进。门禁失败不落库。 */

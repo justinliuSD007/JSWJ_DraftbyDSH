@@ -11,6 +11,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
 
     const PANEL_ID = "jswj-draft";
+    const FORMAL = "技术文件起草（JSWJ_DraftbyDSH）";
     const WIKI_URL = "https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb";
     const inject = ["slots", "remote", "remote.session", "uiWorkspace"];
 
@@ -91,6 +92,8 @@ window.__ModuleLoader__.load({
       },
       inner: { maxWidth: 1080, margin: "0 auto" },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
+      eyebrow: { fontSize: 12, color: C.sub, letterSpacing: "0.04em", marginBottom: 6 },
+      crumb: { fontSize: 12, color: C.sub, marginBottom: 10 },
       h1: { fontSize: 22, fontWeight: 650, margin: 0, color: C.text },
       sub: { color: C.sub, fontSize: 13 },
       actionsRow: { display: "flex", gap: 10, marginLeft: "auto", flexWrap: "wrap" },
@@ -127,6 +130,21 @@ window.__ModuleLoader__.load({
       },
       btnDisabled: { opacity: 0.5, cursor: "default" },
       cards: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 },
+      entries: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 8 },
+      entryGroup: { border: `1px solid ${C.line}`, background: C.layer1, borderRadius: 12, padding: "14px 16px" },
+      entryTitle: { fontSize: 12, color: C.sub, marginBottom: 10 },
+      entryRow: { display: "flex", gap: 8, flexWrap: "wrap" },
+      groupTitle: {
+        display: "flex",
+        alignItems: "baseline",
+        gap: 8,
+        fontSize: 13,
+        fontWeight: 600,
+        color: C.text,
+        margin: "22px 0 10px",
+      },
+      groupCount: { fontSize: 12, fontWeight: 400, color: C.sub },
+      pendingDot: { width: 6, height: 6, borderRadius: 3, background: C.warn, display: "inline-block", marginRight: 6 },
       taskCard: {
         border: `1px solid ${C.line}`,
         background: C.layer1,
@@ -425,53 +443,98 @@ window.__ModuleLoader__.load({
       };
 
       if (screen === "list" || !task || !form) {
+        const groups = [
+          ["待处理", tasks.filter((item) => item.pending)],
+          ["进行中", tasks.filter((item) => !item.pending && item.status !== "completed")],
+          ["已完成", tasks.filter((item) => item.status === "completed")],
+        ];
         return h(
           "div",
           { style: s.page },
           h(
             "div",
             { style: s.inner },
+            h("div", { style: s.eyebrow }, FORMAL),
             h(
               "div",
               { style: s.head },
               h("h1", { style: s.h1 }, "技术文件起草"),
-              h("span", { style: s.sub }, "按步骤推进，门禁未过不能进入下一步"),
+              h("span", { style: s.sub }, "按业务流推进，门禁未过不能进入下一步"),
               h(
                 "div",
                 { style: s.actionsRow },
                 h("button", { style: s.btnSecondary, onClick: () => run(loadTasks) }, "刷新"),
-                h("button", { style: s.btnSecondary, onClick: () => newTask("review") }, "新建预审"),
-                h("button", { style: s.btn, onClick: () => newTask("draft") }, "新建技术文件"),
               ),
             ),
             error ? h("div", { style: { color: C.err, fontSize: 13, marginBottom: 12 } }, error) : null,
-            tasks.length === 0
-              ? h("div", { style: s.note }, "还没有任务。点右上角「新建技术文件」开始。")
-              : h(
+            h(
+              "div",
+              { style: s.entries },
+              h(
+                "div",
+                { style: s.entryGroup },
+                h("div", { style: s.entryTitle }, "创建技术资料"),
+                h(
                   "div",
-                  { style: s.cards },
-                  tasks.map((item) =>
-                    h(
-                      "div",
-                      { key: item.id, style: s.taskCard, onClick: () => openTask(item.id) },
-                      h("div", { style: s.taskTitle }, item.title || "未命名"),
-                      h(
+                  { style: s.entryRow },
+                  h("button", { style: s.btn, onClick: () => newTask("draft") }, "技术文件"),
+                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（暂缓）"),
+                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "试验数据（预留）"),
+                ),
+              ),
+              h(
+                "div",
+                { style: s.entryGroup },
+                h("div", { style: s.entryTitle }, "评审技术资料"),
+                h(
+                  "div",
+                  { style: s.entryRow },
+                  h("button", { style: s.btn, onClick: () => newTask("review") }, "技术文件"),
+                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（预留）"),
+                ),
+              ),
+            ),
+            tasks.length === 0
+              ? h("div", { style: s.note }, "还没有任务。从上方选择「创建技术资料 → 技术文件」开始。")
+              : groups.map(([label, items]) =>
+                  items.length
+                    ? h(
                         "div",
-                        { style: s.taskMeta },
-                        h("span", { style: s.badge }, item.flow === "review" ? "预审" : "起草"),
-                        h("span", null, `${item.id}`),
-                        h("span", null, `${item.step}/${stepsOf(item.flow).length} · ${item.stepName}`),
-                        h("span", null, String(item.updatedAt || "").replace("T", " ").slice(0, 16)),
-                      ),
-                    ),
-                  ),
+                        { key: label },
+                        h("div", { style: s.groupTitle }, label, h("span", { style: s.groupCount }, `${items.length} 项`)),
+                        h(
+                          "div",
+                          { style: s.cards },
+                          items.map((item) =>
+                            h(
+                              "div",
+                              { key: item.id, style: s.taskCard, onClick: () => openTask(item.id) },
+                              h(
+                                "div",
+                                { style: s.taskTitle },
+                                item.pending ? h("span", { style: s.pendingDot }) : null,
+                                item.title || "未命名",
+                              ),
+                              h(
+                                "div",
+                                { style: s.taskMeta },
+                                h("span", { style: s.badge }, item.flow === "review" ? "评审" : "创建"),
+                                h("span", null, `${item.id}`),
+                                h("span", null, `${item.step}/${stepsOf(item.flow).length} · ${item.stepName}`),
+                                h("span", null, String(item.updatedAt || "").replace("T", " ").slice(0, 16)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : null,
                 ),
             h(
               "div",
               { style: s.note },
               "知识库：",
-              h("a", { href: WIKI_URL, target: "_blank", rel: "noreferrer", style: s.link }, "技术资料起草库 / 技术资料草稿库"),
-              "。页面只保存任务与决策，生成、自检、预审、修订由助手执行。",
+              h("a", { href: WIKI_URL, target: "_blank", rel: "noreferrer", style: s.link }, "技术资料起草库 / 首页（使用指南）"),
+              "。页面保存任务与决策，生成、自检、预审、修订由助手执行。",
             ),
           ),
         );
@@ -741,31 +804,153 @@ window.__ModuleLoader__.load({
             const selfcheck = form.selfcheck || {};
             const revision = form.revision || { round: 1, items: [], confirmed: false };
             const items = revision.items || [];
+            const must = items.filter((it) => it.severity === "严重");
+            const suggest = items.filter((it) => it.severity !== "严重");
+            const setItem = (index, patch) =>
+              set({ revision: { ...revision, items: items.map((it, i) => (i === index ? { ...it, ...patch } : it)) } });
+            const acceptAll = () =>
+              set({ revision: { ...revision, items: items.map((it) => ({ ...it, accepted: true })) } });
+
+            const issueRow = (it, index, withCheck) =>
+              h(
+                withCheck ? "label" : "div",
+                { key: index, style: { ...s.row, cursor: withCheck ? "pointer" : "default" } },
+                withCheck
+                  ? h("input", {
+                      type: "checkbox",
+                      checked: it.accepted !== false,
+                      onChange: (e) => setItem(index, { accepted: e.target.checked }),
+                    })
+                  : h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"),
+                h(
+                  "div",
+                  { style: s.rowMain },
+                  h("div", null, `${it.location || ""} ${it.problem || ""}`),
+                  h("div", { style: s.mono }, it.action || it.suggestion || it.basis || ""),
+                ),
+              );
+
             const data =
               step === 5
                 ? h(
                     "div",
                     null,
-                    h("div", { style: s.row }, h("span", { style: { color: gen.status === "done" ? C.ok : C.warn } }, gen.status === "done" ? "✓" : "…"), h("div", { style: s.rowMain }, h("div", null, gen.status === "done" ? "生成已完成" : "等待助手生成"), h("div", { style: s.mono }, gen.note || ""))),
-                    h("div", { style: s.note }, "点「交给助手生成」会新建会话并把任务号交给助手；助手完成后用 jswj_task_update 写回 generation.status=done。"),
+                    h(
+                      "div",
+                      { style: s.row },
+                      h("span", { style: { color: gen.status === "done" ? C.ok : C.warn } }, gen.status === "done" ? "✓" : "…"),
+                      h(
+                        "div",
+                        { style: s.rowMain },
+                        h(
+                          "div",
+                          null,
+                          gen.status === "done"
+                            ? "生成已完成"
+                            : `生成中 ${gen.progress || `0/${form.chapters.filter((c) => c.included).length}`} 章`,
+                        ),
+                        h("div", { style: s.mono }, gen.note || ""),
+                      ),
+                    ),
+                    gen.previewUrl
+                      ? h(
+                          "div",
+                          { style: s.note },
+                          "预览：",
+                          h("a", { style: s.link, href: gen.previewUrl, target: "_blank", rel: "noreferrer" }, gen.previewUrl),
+                        )
+                      : null,
+                    h("div", { style: s.note }, "点「交给助手生成」会新建会话并把任务号交给助手；助手完成后用 jswj_task_update 写回 generation.status=done，并可附 generation.progress 与预览链接。"),
                   )
                 : step === 6
                   ? h(
                       "div",
                       null,
-                      h("div", { style: s.row }, h("span", { style: { color: selfcheck.status === "clean" ? C.ok : C.warn } }, selfcheck.status === "clean" ? "✓" : "…"), h("div", { style: s.rowMain }, h("div", null, selfcheck.status === "clean" ? "自检无阻断" : "自检未完成或有阻断"), h("div", { style: s.mono }, (selfcheck.items || []).length ? `${selfcheck.items.length} 个问题` : "无记录"))),
-                      (selfcheck.items || []).length
-                        ? h("div", { style: { ...s.list, marginTop: 10 } }, selfcheck.items.map((it, i) => h("div", { key: i, style: s.row }, h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"), h("div", { style: s.rowMain }, h("div", null, `${it.location || ""} ${it.problem || ""}`), h("div", { style: s.mono }, it.basis || "")))))
+                      h(
+                        "div",
+                        { style: s.row },
+                        h("span", { style: { color: selfcheck.status === "clean" ? C.ok : C.warn } }, selfcheck.status === "clean" ? "✓" : "…"),
+                        h(
+                          "div",
+                          { style: s.rowMain },
+                          h("div", null, selfcheck.status === "clean" ? "自检无阻断" : "自检未完成或有阻断"),
+                          h(
+                            "div",
+                            { style: s.mono },
+                            `必须处理 ${(selfcheck.items || []).filter((i) => i.severity === "严重").length} 条 · 建议 ${(selfcheck.items || []).filter((i) => i.severity !== "严重").length} 条`,
+                          ),
+                        ),
+                      ),
+                      (selfcheck.items || []).some((i) => i.severity === "严重")
+                        ? h(
+                            "div",
+                            null,
+                            h("div", { style: s.groupTitle }, "必须处理"),
+                            h(
+                              "div",
+                              { style: s.list },
+                              (selfcheck.items || [])
+                                .filter((i) => i.severity === "严重")
+                                .map((it, i) => issueRow(it, i, false)),
+                            ),
+                          )
+                        : null,
+                      (selfcheck.items || []).some((i) => i.severity !== "严重")
+                        ? h(
+                            "div",
+                            null,
+                            h("div", { style: s.groupTitle }, "建议看看"),
+                            h(
+                              "div",
+                              { style: s.list },
+                              (selfcheck.items || [])
+                                .filter((i) => i.severity !== "严重")
+                                .map((it, i) => issueRow(it, i, false)),
+                            ),
+                          )
                         : null,
                     )
                   : h(
                       "div",
                       null,
-                      h("div", { style: s.row }, h("span", { style: { color: C.warn } }, "↻"), h("div", { style: s.rowMain }, h("div", null, `第 ${revision.round || 1} 轮修订`), h("div", { style: s.mono }, `${items.length} 处待确认`))),
+                      h(
+                        "div",
+                        { style: s.row },
+                        h("span", { style: { color: C.warn } }, "↻"),
+                        h(
+                          "div",
+                          { style: s.rowMain },
+                          h("div", null, `第 ${revision.round || 1} 轮修订`),
+                          h("div", { style: s.mono }, `${must.length} 条必须处理 · ${suggest.length} 条建议看看`),
+                        ),
+                      ),
                       items.length
-                        ? h("div", { style: { ...s.list, marginTop: 10 } }, items.map((it, i) => h("div", { key: i, style: s.row }, h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"), h("div", { style: s.rowMain }, h("div", null, `${it.location || ""} ${it.problem || ""}`), h("div", { style: s.mono }, it.action || it.suggestion || "")))))
+                        ? h(
+                            "div",
+                            null,
+                            h(
+                              "div",
+                              { style: { ...s.groupTitle, justifyContent: "space-between" } },
+                              h("span", null, "修订要点"),
+                              h("button", { style: s.btnGhost, onClick: acceptAll }, "同意全部"),
+                            ),
+                            h(
+                              "div",
+                              { style: s.list },
+                              items.map((it, i) => issueRow(it, i, true)),
+                            ),
+                          )
                         : h("div", { style: s.note }, "还没有修订要点。点「交给助手修订」，助手会汇总本轮要点并写回。"),
-                      h("label", { style: { ...s.row, marginTop: 10, cursor: "pointer" } }, h("input", { type: "checkbox", checked: Boolean(revision.confirmed), onChange: (e) => set({ revision: { ...revision, confirmed: e.target.checked } }) }), h("span", null, "我已确认本轮修订要点")),
+                      h(
+                        "label",
+                        { style: { ...s.row, marginTop: 10, cursor: "pointer" } },
+                        h("input", {
+                          type: "checkbox",
+                          checked: Boolean(revision.confirmed),
+                          onChange: (e) => set({ revision: { ...revision, confirmed: e.target.checked } }),
+                        }),
+                        h("span", null, "我已确认本轮修订要点"),
+                      ),
                     );
 
             const canNext =
@@ -953,12 +1138,62 @@ window.__ModuleLoader__.load({
 
         if (step === 4) {
           const issues = form.review.issues || [];
+          const dimensions = {};
+          for (const item of issues) {
+            const key = item.dimension || "内容";
+            if (!dimensions[key]) dimensions[key] = [];
+            dimensions[key].push(item);
+          }
           return h(
             "div",
             null,
-            h("div", { style: s.row }, h("span", { style: { color: issues.length ? C.ok : C.warn } }, issues.length ? "✓" : "…"), h("div", { style: s.rowMain }, h("div", null, issues.length ? `已生成 ${issues.length} 条意见` : "等待助手预审"), h("div", { style: s.mono }, issues.length ? `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议` : ""))),
+            h(
+              "div",
+              { style: s.row },
+              h("span", { style: { color: issues.length ? C.ok : C.warn } }, issues.length ? "✓" : "…"),
+              h(
+                "div",
+                { style: s.rowMain },
+                h("div", null, issues.length ? `已生成 ${issues.length} 条意见` : "等待助手预审"),
+                h(
+                  "div",
+                  { style: s.mono },
+                  issues.length
+                    ? `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议`
+                    : "",
+                ),
+              ),
+            ),
             issues.length
-              ? h("div", { style: { ...s.list, marginTop: 10 } }, issues.map((it, i) => h("div", { key: i, style: s.row }, h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"), h("div", { style: s.rowMain }, h("div", null, `${it.location || ""} ${it.problem || ""}`), h("div", { style: s.mono }, it.basis || "")))))
+              ? Object.keys(dimensions).map((dim) =>
+                  h(
+                    "div",
+                    { key: dim },
+                    h(
+                      "div",
+                      { style: s.groupTitle },
+                      dim,
+                      h("span", { style: s.groupCount }, `${dimensions[dim].length} 条`),
+                    ),
+                    h(
+                      "div",
+                      { style: s.list },
+                      dimensions[dim].map((it, i) =>
+                        h(
+                          "div",
+                          { key: i, style: s.row },
+                          h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"),
+                          h(
+                            "div",
+                            { style: s.rowMain },
+                            h("div", null, `${it.location || ""} ${it.problem || ""}`),
+                            h("div", { style: s.mono }, `依据：${it.basis || "缺依据"}；建议：${it.suggestion || "-"}`),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
               : h("div", { style: s.note }, "点「交给助手预审」，助手按评审单检查后把意见写回 review.issues。"),
             h(
               "div",
@@ -966,7 +1201,11 @@ window.__ModuleLoader__.load({
               h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
               h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
               h("button", { style: s.btnSecondary, onClick: () => handoff(4) }, "交给助手预审"),
-              h("button", { style: { ...s.btn, ...(busy || issues.length === 0 ? s.btnDisabled : {}) }, disabled: busy || issues.length === 0, onClick: () => submit({}) }, "下一步：意见与修订"),
+              h(
+                "button",
+                { style: { ...s.btn, ...(busy || issues.length === 0 ? s.btnDisabled : {}) }, disabled: busy || issues.length === 0, onClick: () => submit({}) },
+                "下一步：意见与修订",
+              ),
               error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
             ),
           );
@@ -974,10 +1213,25 @@ window.__ModuleLoader__.load({
 
         // step 5
         const issues = form.review.issues || [];
+        const decisionLabel = { accepted: "采纳", rejected: "驳回", rewritten: "改写" };
+        const setIssue = (index, patch) =>
+          set({
+            review: {
+              ...form.review,
+              issues: issues.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+            },
+          });
+        const decided = issues.filter((it) => it.decision).length;
+        const allDecided = issues.length > 0 && decided === issues.length;
         const archive = () =>
           run(async () => {
             const rows = issues
-              .map((it, i) => `| ${i + 1} | ${it.severity || "建议"} | ${it.location || ""} | ${it.problem || ""} | ${it.basis || "缺依据"} | ${it.suggestion || ""} |`)
+              .map(
+                (it, i) =>
+                  `| ${i + 1} | ${it.severity || "建议"} | ${it.dimension || "内容"} | ${it.location || ""} | ${
+                    it.problem || ""
+                  } | ${it.basis || "缺依据"} | ${it.suggestion || ""} | ${decisionLabel[it.decision] || "待定"} |`,
+              )
               .join("\n");
             const markdown = [
               `# ${form.basic.name || "技术文件"} · 预审意见`,
@@ -988,8 +1242,8 @@ window.__ModuleLoader__.load({
               "",
               "## 意见清单",
               "",
-              "| # | 等级 | 位置 | 问题 | 依据 | 建议 |",
-              "|---|---|---|---|---|---|",
+              "| # | 等级 | 维度 | 位置 | 问题 | 依据 | 建议 | 处置 |",
+              "|---|---|---|---|---|---|---|---|",
               rows,
               "",
               "## 说明",
@@ -1010,21 +1264,91 @@ window.__ModuleLoader__.load({
         return h(
           "div",
           null,
-          h("div", { style: s.row }, h("span", { style: { color: issues.length ? C.ok : C.warn } }, "●"), h("div", { style: s.rowMain }, h("div", null, `${issues.length} 条意见`), h("div", { style: s.mono }, `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议`))),
+          h(
+            "div",
+            { style: s.row },
+            h("span", { style: { color: issues.length ? C.ok : C.warn } }, "●"),
+            h(
+              "div",
+              { style: s.rowMain },
+              h("div", null, `${issues.length} 条意见 · 已处置 ${decided}/${issues.length}`),
+              h(
+                "div",
+                { style: s.mono },
+                `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；每条必须采纳、驳回或改写，不能留待定`,
+              ),
+            ),
+          ),
+          issues.map((it, i) =>
+            h(
+              "div",
+              { key: i, style: { ...s.row, flexDirection: "column", alignItems: "stretch", gap: 8 } },
+              h(
+                "div",
+                { style: { display: "flex", gap: 8, alignItems: "center" } },
+                h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"),
+                h(
+                  "div",
+                  { style: s.rowMain },
+                  h("div", null, `${it.location || ""} ${it.problem || ""}`),
+                  h("div", { style: s.mono }, `依据：${it.basis || "缺依据"}；建议：${it.suggestion || "-"}`),
+                ),
+                h("span", { style: s.badge }, it.dimension || "内容"),
+              ),
+              h(
+                "div",
+                { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
+                ["accepted", "rejected", "rewritten"].map((key) =>
+                  h(
+                    "button",
+                    {
+                      key,
+                      style: {
+                        ...s.btnSecondary,
+                        background: it.decision === key ? C.brand : "transparent",
+                        color: it.decision === key ? "#fff" : C.text,
+                      },
+                      onClick: () => setIssue(i, { decision: key }),
+                    },
+                    decisionLabel[key],
+                  ),
+                ),
+                it.decision === "rejected" || it.decision === "rewritten"
+                  ? h("input", {
+                      style: { ...s.input, flex: "1 1 220px" },
+                      value: it.decisionReason || "",
+                      placeholder: it.decision === "rejected" ? "驳回理由（必填）" : "改写说明",
+                      onChange: (e) => setIssue(i, { decisionReason: e.target.value }),
+                    })
+                  : null,
+              ),
+            ),
+          ),
           h("div", { style: s.note }, "存档目录：技术资料起草库 / 出稿库 / 预审 / {评审类型} / {任务号} /。协助修订只按意见逐条改，不整体润色、不补写整节。"),
-          form.publish?.url ? h("div", { style: s.note }, "已存档：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url)) : null,
+          form.publish?.url
+            ? h("div", { style: s.note }, "已存档：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
+            : null,
           h(
             "div",
             { style: s.footer },
             h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+            h(
+              "button",
+              { style: s.btnSecondary, disabled: busy, onClick: () => savePatch({ data: { review: { ...form.review, issues } } }) },
+              "保存处置",
+            ),
             h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。") }, "交给助手协助修订"),
-            h("button", { style: s.btnSecondary, disabled: busy, onClick: archive }, "存档意见书"),
+            h(
+              "button",
+              { style: { ...s.btnSecondary, ...(busy || !allDecided ? s.btnDisabled : {}) }, disabled: busy || !allDecided, onClick: archive },
+              "存档意见书",
+            ),
             h(
               "button",
               {
-                style: { ...s.btn, ...(busy || !(form.publish?.url || form.review.archived) ? s.btnDisabled : {}) },
-                disabled: busy || !(form.publish?.url || form.review.archived),
-                onClick: () => submit({ review: { ...form.review, archived: true } }),
+                style: { ...s.btn, ...(busy || !allDecided || !(form.publish?.url || form.review.archived) ? s.btnDisabled : {}) },
+                disabled: busy || !allDecided || !(form.publish?.url || form.review.archived),
+                onClick: () => submit({ review: { ...form.review, issues, archived: true } }),
               },
               "完成",
             ),
@@ -1039,6 +1363,7 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { style: s.inner },
+          h("div", { style: s.eyebrow }, FORMAL),
           h(
             "div",
             { style: s.head },
@@ -1078,6 +1403,13 @@ window.__ModuleLoader__.load({
             h(
               "main",
               { style: s.card },
+              h(
+                "div",
+                { style: s.crumb },
+                `${flow === "review" ? "评审技术资料" : "创建技术资料"} › ${
+                  flow === "review" ? form.review.type || form.basic.type || "需求规范" : form.basic.type || "需求规范"
+                } › ${step} ${names[step - 1]}`,
+              ),
               h("div", { style: s.cardHead }, `${flow === "review" ? "R" : "D"}${step} · 第 ${step} 步 / 共 ${names.length} 步`),
               h("h2", { style: s.cardTitle }, names[step - 1]),
               h("p", { style: s.cardDesc }, STEP_DESC[flow][step - 1] || ""),

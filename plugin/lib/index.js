@@ -291,6 +291,8 @@ async function handleJswjRequest(req, res, { ctx, webServer }) {
                 url: published.url,
                 nodeToken: published.wikiToken,
                 filePath: render.path,
+                size: published.size,
+                title: published.title,
                 at: new Date().toISOString(),
               },
             },
