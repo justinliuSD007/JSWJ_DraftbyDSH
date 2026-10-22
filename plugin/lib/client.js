@@ -1441,15 +1441,7 @@ window.__ModuleLoader__.load({
               ),
               draft.url
                 ? h("div", { style: s.note }, "预览稿：", h("a", { style: s.link, href: draft.url, target: "_blank", rel: "noreferrer" }, draft.url))
-                : null,
-              draft.markdown
-                ? h(
-                    "div",
-                    { style: s.field, marginTop: 12 },
-                    h("label", { style: s.label }, "成稿预览（只读）"),
-                    h("textarea", { style: { ...s.textarea, minHeight: 200 }, readOnly: true, value: draft.markdown }),
-                  )
-                : null,
+                : h("div", { style: s.note }, "点「生成预览稿」把当前成稿发到知识库，在飞书里直接看 Word 效果。"),
               h(
                 "div",
                 { style: s.field, marginTop: 12 },
@@ -1468,7 +1460,7 @@ window.__ModuleLoader__.load({
                 h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
                 h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
                 draft.ready
-                  ? h("button", { style: s.btnSecondary, onClick: preview }, "生成预览稿")
+                  ? h("button", { style: s.btnSecondary, onClick: preview }, draft.url ? "更新预览稿" : "生成预览稿")
                   : h("button", { style: s.btnSecondary, onClick: () => handoff(6, "根据大纲与资料生成成稿，生成后自动自检并修订到无严重项，写回 draft.markdown、draft.ready=true、draft.version 加 1。") }, "交给助手生成成稿"),
                 draft.ready
                   ? h("button", { style: { ...s.btnSecondary, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: submitComments }, "提交意见并修订")
