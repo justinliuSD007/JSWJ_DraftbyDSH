@@ -1,0 +1,26 @@
+# 复制到 ~/.dsh/profiles/desktop/cordis.patch.yml 的末尾，按实际环境填写。
+# 不要把真实的 appSecret 提交到仓库或发给别人。
+- id: jswj-draft
+  config:
+    # 飞书自建应用凭据（必须由使用者自己创建或由管理员分配）
+    appId: "cli_xxxxxxxxxxxxxxxx"
+    appSecret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+    # 知识空间 ID：https://xxx.feishu.cn/wiki/<space> 里对应的空间
+    spaceId: "7698962670346636559"
+
+    # 根节点与草稿库节点 token；留空时自动从知识空间根节点查找
+    rootToken: ""
+    draftRootToken: "<技术资料草稿库 node_token>"
+
+    # 租户域名：用于生成资料库复用链接与首页链接
+    wikiBaseUrl: "https://your-tenant.feishu.cn"
+    wikiHomeUrl: "https://your-tenant.feishu.cn/wiki/<知识库首页 node_token>"
+
+    # 可选：任务完成总结要写入的多维表格 wiki 节点 token；留空则不同步
+    summaryWikiToken: ""
+
+    # 可选：Python 解释器路径；留空使用 DSH 自带运行时
+    pythonPath: ""
+    # 可选：Word 渲染临时目录；留空为 ~/.dsh/jswj-out
+    outputDir: ""

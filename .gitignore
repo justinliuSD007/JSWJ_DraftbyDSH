@@ -6,6 +6,7 @@ __pycache__/
 # 本地产物与凭据
 *.log
 .jswj-out/
+dist/
 appSecret*
 .env
 

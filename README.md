@@ -34,33 +34,28 @@ skills/jswj-draftbydsh/      Skill：业务流、门禁、出稿规范、任务�
 前置：DSH 桌面端；Python 3 + `python-docx`（DSH 自带运行时已包含）；飞书自建应用具备
 `wiki:wiki`、`drive:file:upload`、`wiki:node:move`，并已加入知识空间。
 
-1. **安装插件**
+1. **打包**
 
    ```
-   plugin_manager action=install_bundle target=<本仓库>/plugin
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-plugin.ps1
    ```
 
-2. **配置**（`~/.dsh/profiles/desktop/cordis.patch.yml`）
+   生成 `dist/jswj-draft-plugin-0.4.0.zip`，包内已包含插件、Skill、Word 模板和安装说明。
 
-   ```yaml
-   - id: jswj-draft
-     config:
-       appId: cli_xxxxxxxxxxxx
-       appSecret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-       spaceId: "7698962670346636559"
-       rootToken: ""
-       draftRootToken: "<技术资料草稿库 node_token>"
-       pythonPath: ""
-       outputDir: ""
-   ```
+2. **安装 bundle**
 
-3. **安装 Skill**
+   在 DSH 插件管理里选择「安装本地 bundle」，指向解压后的 `jswj-draft` 目录；或让 DSH 助手安装该目录。
 
-   把 `skills/jswj-draftbydsh/` 复制到 `~/.dsh/skills/`。
+3. **配置**
+
+   复制 `plugin/config.example.yml` 到 `~/.dsh/profiles/desktop/cordis.patch.yml`，按实际环境填 `appId`、`appSecret`、`spaceId`、`draftRootToken`、`wikiBaseUrl`、`wikiHomeUrl` 等。`appSecret` 不随仓库分发。
 
 4. **使用**
 
    左侧「技术文件起草」→ 新建技术文件 / 新建预审 → 按步骤推进。
+
+完整的安装、权限、配置和常见问题见知识库「插件安装指南」：
+https://govy.feishu.cn/wiki/PlJZway6hiR8CNkbqcjcCnQKn6c
 
 ## 工具
 

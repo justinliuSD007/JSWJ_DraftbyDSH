@@ -1,6 +1,6 @@
 {
   "name": "@govy/dsh-plugin-jswj-draft",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "技术文件起草（JSWJ_DraftbyDSH），以下简称本插件：面向飞书知识库的起草与 AI 预审，提供 9 个工具与分步任务页面。",
@@ -18,7 +18,10 @@
     "python/render_docx.py",
     "python/extract_text.py",
     "template/GY-F003-cleaned.docx",
+    "skills/**",
     "cordis.patch.yml",
+    "config.example.yml",
+    "INSTALL.md",
     "locale/*.json",
     "icon.svg",
     "README.md"

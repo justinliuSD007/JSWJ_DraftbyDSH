@@ -748,7 +748,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
               if (bufferHash(oldBuffer) === bufferHash(buffer)) {
                 deduped = true;
                 published = {
-                  url: `https://govy.feishu.cn/wiki/${existing.node_token}`,
+                  url: `${String(cfg.wikiBaseUrl || "https://govy.feishu.cn").replace(/\/$/, "")}/wiki/${existing.node_token}`,
                   wikiToken: existing.node_token,
                 };
               } else {
@@ -1090,6 +1090,8 @@ function apply(ctx, config = {}) {
     summaryWikiToken: process.env.JSWJ_SUMMARY_WIKI_TOKEN ?? "",
     summaryAppToken: process.env.JSWJ_SUMMARY_APP_TOKEN ?? "",
     summaryTableId: process.env.JSWJ_SUMMARY_TABLE_ID ?? "",
+    wikiBaseUrl: process.env.JSWJ_WIKI_BASE_URL ?? "https://govy.feishu.cn",
+    wikiHomeUrl: process.env.JSWJ_WIKI_HOME_URL ?? "",
     pythonPath: process.env.JSWJ_PYTHON ?? "",
     outputDir: "",
     ...config,

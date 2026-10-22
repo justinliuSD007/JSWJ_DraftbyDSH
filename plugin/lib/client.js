@@ -12,7 +12,7 @@ window.__ModuleLoader__.load({
 
     const PANEL_ID = "jswj-draft";
     const FORMAL = "技术文件起草（JSWJ_DraftbyDSH）";
-    const WIKI_URL = "https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb";
+    let WIKI_URL = "https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb";
     const inject = ["slots", "remote", "remote.session", "uiWorkspace"];
 
     const C = {
@@ -2130,7 +2130,8 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function apply(ctx) {
+    function apply(ctx, config = {}) {
+      if (config && config.wikiHomeUrl) WIKI_URL = String(config.wikiHomeUrl);
       const startAgent = async (text, title, taskId, step) => {
         const started = await call("session.start", { text, timeZone: timeZone(), title, taskId, step });
         const sessionId = started && started.sessionId;

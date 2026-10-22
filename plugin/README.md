@@ -22,21 +22,34 @@ plugin/
 ├── template/GY-F003-cleaned.docx
 ├── locale/{zh,en}.json
 ├── icon.svg
+├── skills/jswj-draftbydsh/SKILL.md
+├── config.example.yml
+├── INSTALL.md
 ├── selftest.mjs
 └── README.md
 ```
 
 ## 安装
 
+推荐用仓库根目录的 `pack-plugin.ps1` 打成 zip，交给对方在 DSH 插件管理里安装本地 bundle；详细步骤见 [INSTALL.md](./INSTALL.md) 和知识库「插件安装指南」。
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-plugin.ps1
+```
+
+开发环境也可以直接：
+
 ```
 plugin_manager action=install_bundle target=<本目录绝对路径>
 ```
+
+Skill 已随包放在 `skills/jswj-draftbydsh/`，安装后自动加载；未识别时手工复制到 `~/.dsh/skills/`。
 
 条目 id 为 `jswj-draft`，页面挂载在 `main`（key 同 id）与 `sidebar.panellist`（显示名「技术文件起草」）。
 
 ## 配置
 
-在 profile 的 `~/.dsh/profiles/<profile>/cordis.patch.yml` 中按 id 覆盖（config 整体替换）：
+复制 `config.example.yml` 到 profile 的 `~/.dsh/profiles/<profile>/cordis.patch.yml`，按实际环境填写：
 
 ```yaml
 - id: jswj-draft
@@ -45,14 +58,16 @@ plugin_manager action=install_bundle target=<本目录绝对路径>
     appSecret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     spaceId: "7698962670346636559"
     rootToken: ""
-    draftRootToken: "K3NpwxFzribxgOkzFxaczeH7nXf"
-    summaryWikiToken: "P77ZwJyDIiIfoJkmUVccrk7mnfc"
+    draftRootToken: "<技术资料草稿库 node_token>"
+    wikiBaseUrl: "https://your-tenant.feishu.cn"
+    wikiHomeUrl: "https://your-tenant.feishu.cn/wiki/<首页 node_token>"
+    summaryWikiToken: ""
     pythonPath: ""
     outputDir: ""
     fontDir: ""
 ```
 
-`summaryWikiToken` 指向「文件起草工作总结」多维表格；任务完成时自动写入一条汇总，按任务号更新，不重复插入。字段不存在时自动补齐。
+`summaryWikiToken` 可选，指向「文件起草工作总结」多维表格；任务完成时自动写入一条汇总，按任务号更新，不重复插入。字段不存在时自动补齐。`wikiBaseUrl` / `wikiHomeUrl` 用于非 govy 租户。
 
 `fontDir` 留空时自动查找桌面「鸿蒙字体（对外仅可用该字体）」；字体文件不随插件分发。
 
