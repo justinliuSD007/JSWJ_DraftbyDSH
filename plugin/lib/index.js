@@ -549,10 +549,10 @@ function apply(ctx, config = {}) {
     defineTool({
       name: "jswj_doc_append",
       description:
-        "向飞书在线文档末尾追加纯文本段落，按换行分段。用于写入预审意见、任务说明等短文本；正式出稿请用 jswj_render_docx + jswj_publish_docx。",
+        "向飞书在线文档末尾追加内容。支持简单 Markdown：#/##/### 标题、- 列表、1. 编号、> 引用、--- 分隔线，其余按段落。用于写入指南、预审意见、任务说明；正式出稿请用 jswj_render_docx + jswj_publish_docx。",
       parameters: {
         target: { type: "string", required: true, description: "wiki 链接、docx 链接、节点 token 或文档 token" },
-        content: { type: "string", required: true, description: "要追加的文本，每行一段" },
+        content: { type: "string", required: true, description: "要追加的内容，支持少量 Markdown 语法" },
       },
       async execute(args) {
         const token = pickToken(args.target);
@@ -565,29 +565,60 @@ function apply(ctx, config = {}) {
           const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(token)}`);
           docId = node.node?.obj_token ?? token;
           if (node.node?.obj_type && node.node.obj_type !== "docx") {
-            fail(`该节点类型为 ${node.node.obj_type}，只能向 docx 在线文档追加段落。`);
+            fail(`该节点类型为 ${node.node.obj_type}，只能向 docx 在线文档追加内容。`);
           }
         } catch (err) {
           if (String(err.message).includes("只能向 docx")) throw err;
         }
 
-        const lines = content.split(/\r?\n/).filter((line) => line.trim() !== "");
-        const children = lines.map((line) => ({
-          block_type: 2,
-          text: { elements: [{ text_run: { content: line } }], style: {} },
-        }));
-        await api(cfg, `/docx/v1/documents/${docId}/blocks/${docId}/children`, {
-          method: "POST",
-          body: JSON.stringify({ children, index: -1 }),
-        });
-        return { appended: children.length, docId };
+        const blocks = [];
+        for (const raw of content.split(/\r?\n/)) {
+          const line = raw.trim();
+          if (!line) continue;
+          if (line === "---" || line === "***") {
+            blocks.push({ block_type: 22, divider: {} });
+            continue;
+          }
+          let m;
+          if ((m = /^(#{1,3})\s+(.*)$/.exec(line))) {
+            const level = m[1].length;
+            const key = ["heading1", "heading2", "heading3"][level - 1];
+            blocks.push({ block_type: level + 2, [key]: { elements: [{ text_run: { content: m[2] } }], style: {} } });
+            continue;
+          }
+          if ((m = /^[-*]\s+(.*)$/.exec(line))) {
+            blocks.push({ block_type: 12, bullet: { elements: [{ text_run: { content: m[1] } }], style: {} } });
+            continue;
+          }
+          if ((m = /^\d+\.\s+(.*)$/.exec(line))) {
+            blocks.push({ block_type: 13, ordered: { elements: [{ text_run: { content: m[1] } }], style: {} } });
+            continue;
+          }
+          if ((m = /^>\s?(.*)$/.exec(line))) {
+            blocks.push({ block_type: 15, quote: { elements: [{ text_run: { content: m[1] } }], style: {} } });
+            continue;
+          }
+          blocks.push({ block_type: 2, text: { elements: [{ text_run: { content: line } }], style: {} } });
+        }
+
+        // 飞书单次 children 创建有数量上限，按 40 分批发。
+        let batches = 0;
+        for (let i = 0; i < blocks.length; i += 40) {
+          await api(cfg, `/docx/v1/documents/${docId}/blocks/${docId}/children`, {
+            method: "POST",
+            body: JSON.stringify({ children: blocks.slice(i, i + 40), index: -1 }),
+          });
+          batches += 1;
+        }
+        return { appended: blocks.length, docId, batches };
       },
       output: {
         schema: objectSchema({
-          appended: { type: "number", description: "追加的段落数" },
+          appended: { type: "number", description: "追加的块数" },
           docId: str("文档 token", true),
+          batches: { type: "number", description: "请求批次数" },
         }),
-        render: (_args, v) => text(v),
+        render: (_args, v) => text(`已追加 ${v.appended} 个块（${v.batches} 批）到 ${v.docId}`),
       },
     }),
   );

@@ -11,7 +11,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
 
     const PANEL_ID = "jswj-draft";
-    const WIKI_URL = "https://govy.feishu.cn/wiki/K3NpwxFzribxgOkzFxaczeH7nXf";
+    const WIKI_URL = "https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb";
     const inject = ["slots", "remote", "remote.session", "uiWorkspace"];
 
     const C = {

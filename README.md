@@ -4,6 +4,7 @@
 
 ## 能力
 
+- **使用指南**：https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb
 - **分步任务向导**：起草 D1–D8、预审 R1–R5，每步一个决策，门禁不过不能推进。
 - 任务状态存 Host（`~/.dsh/jswj-tasks`），刷新、重开、换会话都不丢。
 - 知识库读写：列节点、读正文、建节点、追加段落。
