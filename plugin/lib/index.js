@@ -598,35 +598,35 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const number = String(task.data.basic?.number || "").trim();
         const fileName = `${number ? `${number}-` : ""}${baseName}.docx`;
 
-        const library = cfg.draftRootToken || (await ensureWikiChild(cfg, cfg.rootToken || "", "技术资料草稿库"));
-        const tierNode = await ensureWikiChild(cfg, library, String(task.data.attrs?.tier || "未分级"));
-        const boardNode = await ensureWikiChild(cfg, tierNode, String(task.data.attrs?.board || "未分类"));
-        const typeNode = await ensureWikiChild(cfg, boardNode, String(task.data.basic?.type || "未分类"));
+        const outRoot = await ensureWikiChild(cfg, cfg.rootToken || "", "出稿库");
+        const archive = String(task.data.attrs?.archive || "feishu");
+        let targetNode;
+        let outPath;
+        if (archive === "polarion") {
+          const polarionNode = await ensureWikiChild(cfg, outRoot, "Polarion");
+          const project = String(task.data.attrs?.project || "未指定项目");
+          targetNode = await ensureWikiChild(cfg, polarionNode, project);
+          outPath = `技术资料起草库 / 出稿库 / Polarion / ${project} /`;
+        } else {
+          const approvalNode = await ensureWikiChild(cfg, outRoot, "飞书审批");
+          const tier = String(task.data.attrs?.tier || "未分级");
+          const board = String(task.data.attrs?.board || "未分类");
+          const tierNode = await ensureWikiChild(cfg, approvalNode, tier);
+          targetNode = await ensureWikiChild(cfg, tierNode, board);
+          outPath = `技术资料起草库 / 出稿库 / 飞书审批 / ${tier} / ${board} /`;
+        }
 
         const oldToken = draft.nodeToken || (draft.url ? String(draft.url).split("/").filter(Boolean).pop() : "");
-        const canRename =
-          Boolean(oldToken) && Number(draft.previewVersion) === Number(draft.version) && Boolean(draft.url);
 
         let published = null;
         let renderedPath = "";
-        if (canRename) {
-          try {
-            await api(cfg, `/wiki/v2/spaces/${cfg.spaceId}/nodes/${oldToken}/update_title`, {
-              method: "POST",
-              body: JSON.stringify({ title: fileName }),
-            });
-            published = { url: draft.url, wikiToken: oldToken, path: "" };
-          } catch {
-            published = null;
-          }
-        }
 
         if (!published) {
           const renderArgs = { markdown, title: baseName };
           if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
           const render = await tool("jswj_render_docx").execute(renderArgs, {});
           renderedPath = render.path;
-          published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
+          published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: targetNode, name: fileName }, {});
 
           if (oldToken && oldToken !== published.wikiToken) {
             try {
@@ -661,7 +661,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           url: published.url,
           nodeToken: published.wikiToken,
           title: fileName,
-          path: `技术资料起草库 / 技术资料草稿库 / ${task.data.attrs?.tier || "未分级"} / ${task.data.attrs?.board || "未分类"} / ${task.data.basic?.type || "未分类"} /`,
+          path: outPath,
         };
         break;
       }

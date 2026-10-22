@@ -867,6 +867,10 @@ window.__ModuleLoader__.load({
 
           if (step === 2) {
             const path = `技术资料起草库 / 技术资料草稿库 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} / ${form.basic.type || "-"} /`;
+            const outPath =
+              form.attrs.archive === "polarion"
+                ? `技术资料起草库 / 出稿库 / Polarion / ${form.attrs.project || "-"} /`
+                : `技术资料起草库 / 出稿库 / 飞书审批 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} /`;
             return h(
               "div",
               null,
@@ -907,8 +911,12 @@ window.__ModuleLoader__.load({
                   : null,
               ),
               h("div", { style: s.note },
-                "本文件将创建于：",
+                "草稿 / 预览：",
                 h("span", { style: { ...s.mono, color: C.text } }, path),
+              ),
+              h("div", { style: s.note },
+                "正式出稿：",
+                h("span", { style: { ...s.mono, color: C.text } }, outPath),
                 "目录不存在时在出稿阶段创建，已存在则复用。",
               ),
               h(
@@ -1594,7 +1602,11 @@ window.__ModuleLoader__.load({
             h(
               "div",
               { style: s.note },
-              `目标目录：技术资料起草库 / 技术资料草稿库 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} / ${form.basic.type || "-"} /`,
+              `目标目录：技术资料起草库 / 出稿库 / ${
+                form.attrs.archive === "polarion"
+                  ? `Polarion / ${form.attrs.project || "-"} /`
+                  : `飞书审批 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} /`
+              }`,
             ),
             h("div", { style: s.note }, "出稿会把同一份成稿按正式文件名落位，并删除旧草稿文件，不会留下两份。"),
             form.publish?.url
