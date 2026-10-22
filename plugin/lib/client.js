@@ -398,6 +398,21 @@ window.__ModuleLoader__.load({
       });
     }
 
+    async function writeClipboard(text) {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      document.body.removeChild(area);
+    }
+
     function promptFor(task, step, extra) {      const names = stepsOf(task.flow);
       return [
         `【JSWJ 任务 ${task.id} · 第 ${step} 步：${names[step - 1]}】`,
@@ -498,9 +513,21 @@ window.__ModuleLoader__.load({
 
       const handoff = async (step, extra) => {
         await run(async () => {
-          await props.startAgent(promptFor(task, step, extra));
-          setNotice("已在新会话中交给助手；完成后回本页点「刷新」。");
+          await Promise.race([
+            props.startAgent(promptFor(task, step, extra)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("投递超时，请用「复制指令」粘贴到对话中")), 12000)),
+          ]);
+          setNotice("已把任务号交给当前会话；助手完成后回本页点「刷新」。");
         });
+      };
+
+      const copyPrompt = async (step, extra) => {
+        try {
+          await writeClipboard(promptFor(task, step, extra));
+          setNotice("指令已复制，可粘贴到对话中。");
+        } catch (err) {
+          setError("复制失败：" + String((err && err.message) || err));
+        }
       };
 
       const installFont = async () => {
@@ -564,26 +591,23 @@ window.__ModuleLoader__.load({
                 ),
               ),
             ),
-            h(
-              "div",
-              { style: s.envBar },
-              h("span", { style: s.envLabel }, "字体 HarmonyOS Sans SC"),
-              font.loading
-                ? h("span", null, "检查中…")
-                : font.installed
-                  ? h("span", { style: { color: C.ok } }, "已安装")
-                  : h("span", { style: { color: C.warn } }, font.supported === false ? "需手动安装" : "未安装"),
-              !font.loading && !font.installed && font.supported !== false
-                ? h("button", { style: s.btnSmall, disabled: busy, onClick: installFont }, "安装字体")
-                : null,
-              !font.loading && !font.installed && font.supported === false
-                ? h("span", { style: s.envHint }, "macOS 请双击 ttf 安装到字体册")
-                : null,
-              !font.loading && !font.installed && font.sourceAvailable === false
-                ? h("span", { style: s.envHint }, "未找到字体目录，可把 ttf 放到桌面「鸿蒙字体（对外仅可用该字体）」")
-                : null,
-              font.restartRequired ? h("span", { style: s.envHint }, "重启 DSH 后生效") : null,
-            ),
+            !font.loading && !font.installed
+              ? h(
+                  "div",
+                  { style: s.envBar },
+                  h("span", { style: s.envLabel }, "字体 HarmonyOS Sans SC"),
+                  h("span", { style: { color: C.warn } }, font.supported === false ? "需手动安装" : "未安装"),
+                  font.supported !== false
+                    ? h("button", { style: s.btnSmall, disabled: busy, onClick: installFont }, "安装字体")
+                    : null,
+                  font.supported === false
+                    ? h("span", { style: s.envHint }, "macOS 请双击 ttf 安装到字体册")
+                    : null,
+                  font.sourceAvailable === false
+                    ? h("span", { style: s.envHint }, "未找到字体目录，可把 ttf 放到桌面「鸿蒙字体（对外仅可用该字体）」")
+                    : null,
+                )
+              : null,
             notice ? h("div", { style: { color: C.ok, fontSize: 12.5, marginBottom: 8 } }, notice) : null,
             tasks.length === 0
               ? h("div", { style: s.note }, "还没有任务。从上方选择「创建技术资料 → 技术文件」开始。")
@@ -871,9 +895,22 @@ window.__ModuleLoader__.load({
           if (step === 4) {
             const setChapter = (index, patch) =>
               set({ chapters: form.chapters.map((c, i) => (i === index ? { ...c, ...patch } : c)) });
+            const draftExtra =
+              "已填写的要点保留，只为空白的一级、二级章节拟 1–3 条初步要点，写回 outline.chapters[].points 并把 aiDraft 设为 true；不要改章节结构。";
             return h(
               "div",
               null,
+              h(
+                "div",
+                { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 } },
+                h("span", { style: s.mono }, "要点可换行，一行一条；也可以让助手先拟一版初稿"),
+                h(
+                  "div",
+                  { style: { display: "flex", gap: 8 } },
+                  h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4, draftExtra) }, "复制拟稿指令"),
+                  h("button", { style: s.btnSecondary, onClick: () => handoff(4, draftExtra) }, "让助手拟稿"),
+                ),
+              ),
               h("div", { style: s.list },
                 form.chapters.map((c, i) =>
                   h(
@@ -895,19 +932,27 @@ window.__ModuleLoader__.load({
                     c.level <= 2
                       ? h(
                           "div",
-                          { style: { display: "flex", gap: 6, alignItems: "center" } },
-                          h("input", {
-                            style: s.chapterInput,
-                            value: (c.points || []).join("；"),
-                            placeholder: "要点，用；分隔",
+                          { style: { display: "flex", gap: 6, alignItems: "flex-start" } },
+                          h("textarea", {
+                            style: {
+                              ...s.chapterInput,
+                              height: 52,
+                              minHeight: 52,
+                              padding: "6px 8px",
+                              lineHeight: 1.5,
+                              resize: "vertical",
+                              fontFamily: "inherit",
+                            },
+                            value: (c.points || []).join("\n"),
+                            placeholder: "一行一条要点",
                             onChange: (e) =>
                               setChapter(i, {
-                                points: e.target.value.split(/[；;\n]/).map((x) => x.trim()).filter(Boolean),
+                                points: e.target.value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
                               }),
                           }),
                           h(
                             "label",
-                            { style: { fontSize: 11, color: C.sub, whiteSpace: "nowrap", display: "flex", gap: 4, alignItems: "center" } },
+                            { style: { fontSize: 11, color: C.sub, whiteSpace: "nowrap", display: "flex", gap: 4, alignItems: "center", paddingTop: 6 } },
                             h("input", {
                               type: "checkbox",
                               checked: Boolean(c.aiDraft),
@@ -937,7 +982,7 @@ window.__ModuleLoader__.load({
                   },
                   "确认，开始生成",
                 ),
-                error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
+                error ? h("span", { style: { ...s.status, color: C.err } }, error) : notice ? h("span", { style: { ...s.status, color: C.ok } }, notice) : null,
               ),
             );
           }
@@ -1113,6 +1158,11 @@ window.__ModuleLoader__.load({
                   "button",
                   { style: s.btnSecondary, onClick: () => handoff(step) },
                   step === 5 ? "交给助手生成" : step === 6 ? "交给助手自检" : "交给助手修订",
+                ),
+                h(
+                  "button",
+                  { style: s.btnSecondary, onClick: () => copyPrompt(step) },
+                  "复制指令",
                 ),
                 h(
                   "button",
@@ -1344,6 +1394,7 @@ window.__ModuleLoader__.load({
               h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
               h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
               h("button", { style: s.btnSecondary, onClick: () => handoff(4) }, "交给助手预审"),
+              h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4) }, "复制指令"),
               h(
                 "button",
                 { style: { ...s.btn, ...(busy || issues.length === 0 ? s.btnDisabled : {}) }, disabled: busy || issues.length === 0, onClick: () => submit({}) },
@@ -1481,6 +1532,7 @@ window.__ModuleLoader__.load({
               "保存处置",
             ),
             h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。") }, "交给助手协助修订"),
+            h("button", { style: s.btnSecondary, onClick: () => copyPrompt(5, "如需协助修订，只改意见指出的位置。") }, "复制指令"),
             h(
               "button",
               { style: { ...s.btnSecondary, ...(busy || !allDecided ? s.btnDisabled : {}) }, disabled: busy || !allDecided, onClick: archive },
@@ -1601,9 +1653,23 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const startAgent = async (text) => {
-        const created = await ctx.remote.session.create({});
-        const sessionId = created && created.sessionId;
-        if (!sessionId) throw new Error("会话创建失败：未返回 sessionId");
+        let sessionId;
+        try {
+          const listed = await ctx.remote.session.list({});
+          const items = (listed && listed.items) || [];
+          const target =
+            items.find((item) => !item.blank && !item.origin && !item.parentSessionId) ||
+            items.find((item) => !item.blank) ||
+            items[0];
+          sessionId = target && target.sessionId;
+        } catch {
+          sessionId = undefined;
+        }
+        if (!sessionId) {
+          const created = await ctx.remote.session.create({});
+          sessionId = created && created.sessionId;
+        }
+        if (!sessionId) throw new Error("没有可用会话，请复制指令后粘贴到对话中。");
         await ctx.remote.session.prompt({
           requestId: requestId(),
           sessionId,
