@@ -489,6 +489,7 @@ window.__ModuleLoader__.load({
       const [confirmId, setConfirmId] = React.useState("");
       const [updateInfo, setUpdateInfo] = React.useState(null);
       const [health, setHealth] = React.useState({ loading: true });
+      const autoPreviewRef = React.useRef("");
 
       const loadTasks = async () => {
         try {
@@ -511,6 +512,26 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (task) setForm(hydrate(task));
       }, [task && task.id, task && task.step, task && task.updatedAt]);
+
+      React.useEffect(() => {
+        if (!task || !form) return;
+        if (task.flow !== "draft" || Number(task.step) !== 6) return;
+        const draft = form.draft || {};
+        if (!draft.ready || draft.url || !draft.markdown) return;
+        const key = `${task.id}:${draft.version || 1}`;
+        if (autoPreviewRef.current === key) return;
+        autoPreviewRef.current = key;
+        call("draft.preview", { id: task.id, markdown: draft.markdown, version: draft.version || 1 })
+          .then(() => call("tasks.get", { id: task.id }))
+          .then((fresh) => setTask(fresh))
+          .catch((err) => setError("自动生成预览稿失败：" + String((err && err.message) || err)));
+      }, [
+        task && task.id,
+        task && task.step,
+        form && form.draft && form.draft.ready,
+        form && form.draft && form.draft.version,
+        form && form.draft && form.draft.url,
+      ]);
 
       const run = async (fn) => {
         if (busy) return;

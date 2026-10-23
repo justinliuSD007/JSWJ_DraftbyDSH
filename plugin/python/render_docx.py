@@ -303,10 +303,10 @@ def add_table(doc, rows):
     weights = []
     for c in range(ncols):
         longest = max([weight(header[c])] + [weight(r[c]) if c < len(r) else 0 for r in body])
-        weights.append(max(longest, 6))
+        weights.append(max(longest, 8))
 
     total_dxa = TBL_W_DXA
-    min_dxa = 1361  # 2.4 cm
+    min_dxa = 1021  # 1.8 cm：短列不占过多宽度，长文本列获得主要宽度
     raw = [total_dxa * w / sum(weights) for w in weights]
     raw = [max(x, min_dxa) for x in raw]
     scale = total_dxa / sum(raw)
@@ -359,6 +359,21 @@ def add_field(paragraph, instruction):
     run_with(end)
 
 
+def add_bookmark(paragraph, name):
+    ident = str(abs(hash(name)) % 100000)
+    start = OxmlElement("w:bookmarkStart")
+    start.set(qn("w:id"), ident)
+    start.set(qn("w:name"), name)
+    end = OxmlElement("w:bookmarkEnd")
+    end.set(qn("w:id"), ident)
+    pPr = paragraph._p.pPr
+    if pPr is not None:
+        pPr.addnext(start)
+    else:
+        paragraph._p.insert(0, start)
+    paragraph._p.append(end)
+
+
 def add_caption(doc, kind, number, text, bookmark):
     """图/表题：按源编号原样写入，并加书签供图目录/表目录取页码。"""
     style_name = "图题注" if kind == "图" else "表题注"
@@ -380,13 +395,7 @@ def add_caption(doc, kind, number, text, bookmark):
     if kind == "表":
         paragraph.paragraph_format.keep_with_next = True
 
-    start = OxmlElement("w:bookmarkStart")
-    start.set(qn("w:id"), str(abs(hash(bookmark)) % 100000))
-    start.set(qn("w:name"), bookmark)
-    end = OxmlElement("w:bookmarkEnd")
-    end.set(qn("w:id"), start.get(qn("w:id")))
-    paragraph._p.insert(0, start)
-    paragraph._p.append(end)
+    add_bookmark(paragraph, bookmark)
 
 
 def add_toc_entry(doc, heading, text, bookmark):
@@ -398,7 +407,7 @@ def add_toc_entry(doc, heading, text, bookmark):
     return paragraph
 
 
-def fill_static_toc(doc, figures, tables):
+def fill_static_toc(doc, headings, figures, tables):
     paragraphs = list(doc.paragraphs)
     fig_heading = tab_heading = None
     for p in paragraphs:
@@ -413,19 +422,27 @@ def fill_static_toc(doc, figures, tables):
     # 删掉模板自带的图目录、表目录示例条目和目录域
     fig_idx = paragraphs.index(fig_heading)
     tab_idx = paragraphs.index(tab_heading)
-    body_start = len(paragraphs)
-    for idx in range(tab_idx + 1, len(paragraphs)):
-        try:
-            style_name = paragraphs[idx].style.name
-        except Exception:
-            style_name = ""
-        if style_name == "Heading 1":
-            body_start = idx
-            break
     for p in paragraphs[fig_idx + 1 : tab_idx]:
         p._element.getparent().remove(p._element)
-    for p in paragraphs[tab_idx + 1 : body_start]:
-        p._element.getparent().remove(p._element)
+    idx = tab_idx + 1
+    while idx < len(paragraphs):
+        candidate = paragraphs[idx]
+        style_name = candidate.style.name
+        if style_name == "table of figures" or (not candidate.text.strip() and style_name == "Normal"):
+            candidate._element.getparent().remove(candidate._element)
+            idx += 1
+            continue
+        break
+
+    # 正文目录放在图目录之前
+    main_heading = doc.add_paragraph("目  录")
+    main_heading.style = fig_heading.style
+    main_heading.alignment = fig_heading.alignment
+    main_heading.paragraph_format.page_break_before = True
+    fig_heading._p.addprevious(main_heading._p)
+    for item in reversed(headings):
+        entry = add_toc_entry(doc, main_heading, item["text"], item["bookmark"])
+        entry.paragraph_format.left_indent = Cm(0.75 * (item["level"] - 1))
 
     for caption in reversed(figures):
         add_toc_entry(doc, fig_heading, f"图 {caption['number']} {caption['text']}".strip(), caption["bookmark"])
@@ -561,7 +578,7 @@ def build(args):
     if not template.is_file():
         raise RuntimeError(f"模板文件不存在：{template}")
 
-    blocks = parse(md_path.read_text(encoding="utf-8"))
+    blocks = parse(md_path.read_text(encoding="utf-8").lstrip("\ufeff"))
     doc = Document(str(template))
     trim_front_matter(doc)
 
@@ -579,6 +596,8 @@ def build(args):
     fill_revision(doc, args)
 
     started = False
+    headings = []
+    heading_seq = 0
     figures = []
     tables = []
     caption_seq = 0
@@ -591,11 +610,17 @@ def build(args):
                 continue  # 文档标题已在封面体现
             nlevel = {2: 1, 3: 2, 4: 3}.get(level, 3)
             clean = LINK_RE.sub(lambda m: m.group(1), text).replace("`", "").replace("**", "")
-            clean = re.sub(r"^\s*\d+(?:\.\d+)*\s*", "", clean)
             h = doc.add_heading(clean, level=nlevel)
+            # 章号沿用源文件（镜像不改写），同时取消样式自带的多级编号，
+            # 否则会出现“1.9 系统边界”这类与源文件不一致的自动编号。
+            cancel_numbering(h)
             # 标题不与正文分页：章/节标题不落在页末
             h.paragraph_format.keep_with_next = True
             h.paragraph_format.keep_together = True
+            heading_seq += 1
+            bookmark = f"_JswjH{heading_seq}"
+            add_bookmark(h, bookmark)
+            headings.append({"level": nlevel, "text": clean, "bookmark": bookmark})
             started = True
             continue
 
@@ -682,7 +707,7 @@ def build(args):
             else:
                 print(f"warning: missing image {path}", file=sys.stderr)
 
-    fill_static_toc(doc, figures, tables)
+    fill_static_toc(doc, headings, figures, tables)
 
     settings = doc.settings.element
     for el in settings.findall(qn("w:updateFields")):
