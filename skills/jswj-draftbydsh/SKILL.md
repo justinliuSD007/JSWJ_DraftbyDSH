@@ -177,6 +177,7 @@ Markdown 结构决定 Word 结构：
 - 封面两条横线是模板里的图形对象，清理模板时不能当批注删掉。
 - 文件编号同时写入封面表格和页眉右上角，格式为 `文件编号：{编号}`。
 - 编制、校对、审核、批准、版本取任务 `basic` 的对应字段；没有值时保留「待定」，不要留模板里的 `XXXX`。
+- 变更记录表按 `basic.revisions` 渲染，每行一个版本；至少保留「A0 新发文件」，后续修订逐行追加版本、说明、责任人、日期。
 - `jswj_render_docx` 的 `docNumber`、`author`、`checker`、`reviewer`、`approver`、`version` 要与任务 `basic` 一致。
 
 ### 自动预览

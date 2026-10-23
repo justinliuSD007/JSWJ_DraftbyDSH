@@ -566,6 +566,8 @@ def fill_cover(doc, meta):
             if len(row.cells) < 2:
                 continue
             label = row.cells[0].text.strip().rstrip("：:")
+            if not row.cells[0].text.strip().endswith(("：", ":")):
+                continue
             if label in meta:
                 cell = row.cells[1]
                 par = cell.paragraphs[0]
@@ -578,36 +580,53 @@ def fill_cover(doc, meta):
 
 
 def fill_revision(doc, args):
-    values = [args.version, args.revision_note, args.author or "待定", args.date]
+    revisions = getattr(args, "revisions", None) or []
+    if not revisions:
+        revisions = [{
+            "version": args.version,
+            "note": args.revision_note,
+            "owner": args.author or "待定",
+            "date": args.date,
+        }]
     for t in doc.tables:
         if len(t.rows) < 2 or len(t.rows[0].cells) < 4:
             continue
         if t.rows[0].cells[0].text.strip() != "版本":
             continue
-        for c, v in enumerate(values):
-            cell = t.rows[1].cells[c]
-            par = cell.paragraphs[0]
-            if par.runs:
-                run = par.runs[0]
-                run.text = v
-                for r in par.runs[1:]:
-                    r.text = ""
-            else:
-                run = par.add_run(v)
-            run.font.name = "宋体"
-            run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
-            run.font.size = Pt(10.5)
-            run.bold = False
-            pPr = par._p.find(qn("w:pPr"))
-            if pPr is not None:
-                rPr = pPr.find(qn("w:rPr"))
-                if rPr is not None:
-                    for tag in ("w:sz", "w:szCs", "w:b", "w:bCs"):
-                        el = rPr.find(qn(tag))
-                        if el is not None:
-                            rPr.remove(el)
-        for row in list(t.rows)[2:]:
+        body_rows = list(t.rows)[1:]
+        for row in body_rows[len(revisions):]:
             row._element.getparent().remove(row._element)
+        while len(list(t.rows)) - 1 < len(revisions):
+            t.add_row()
+        for idx, revision in enumerate(revisions):
+            values = [
+                str(revision.get("version") or ""),
+                str(revision.get("note") or ""),
+                str(revision.get("owner") or ""),
+                str(revision.get("date") or ""),
+            ]
+            for c, v in enumerate(values):
+                cell = t.rows[idx + 1].cells[c]
+                par = cell.paragraphs[0]
+                if par.runs:
+                    run = par.runs[0]
+                    run.text = v
+                    for r in par.runs[1:]:
+                        r.text = ""
+                else:
+                    run = par.add_run(v)
+                run.font.name = "宋体"
+                run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+                run.font.size = Pt(10.5)
+                run.bold = False
+                pPr = par._p.find(qn("w:pPr"))
+                if pPr is not None:
+                    rPr = pPr.find(qn("w:rPr"))
+                    if rPr is not None:
+                        for tag in ("w:sz", "w:szCs", "w:b", "w:bCs"):
+                            el = rPr.find(qn(tag))
+                            if el is not None:
+                                rPr.remove(el)
         break
 
 
@@ -800,8 +819,13 @@ def main():
     parser.add_argument("--doc-number", dest="doc_number", default="")
     parser.add_argument("--version", default="A0")
     parser.add_argument("--revision-note", dest="revision_note", default="1 期方案初版")
+    parser.add_argument("--revisions", default="[]")
     parser.add_argument("--date", default="")
     args = parser.parse_args()
+    try:
+        args.revisions = json.loads(args.revisions) if args.revisions else []
+    except Exception:
+        args.revisions = []
     if not args.date:
         from datetime import date
 
