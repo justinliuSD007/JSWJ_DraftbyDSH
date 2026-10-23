@@ -608,7 +608,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const boardNode = await ensureWikiChild(cfg, tierNode, String(task.data.attrs?.board || "未分类"));
         const typeNode = await ensureWikiChild(cfg, boardNode, String(task.data.basic?.type || "未分类"));
 
-        const renderArgs = { markdown, title: `${baseName}-草稿-v${version}` };
+        const renderArgs = { markdown, title: `${baseName}-草稿-v${version}`, docNumber: task.data.basic?.number || "" };
         if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
         const render = await tool("jswj_render_docx").execute(renderArgs, {});
         const published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
@@ -658,7 +658,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         let renderedPath = "";
 
         if (!published) {
-          const renderArgs = { markdown, title: baseName };
+          const renderArgs = { markdown, title: baseName, docNumber: number };
           if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
           const render = await tool("jswj_render_docx").execute(renderArgs, {});
           renderedPath = render.path;

@@ -134,7 +134,7 @@ Markdown 结构决定 Word 结构：
 - 题注由渲染器转成 Word 的 Caption + SEQ 域，图目录、表目录据此自动生成；没有题注的图/表不会进入目录。
 - 长文档先写入本地 `.md` 文件，再用 `sourcePath` 渲染，避免把整篇正文塞进工具参数。
 
-`jswj_render_docx` 必填 `title` 与 `markdown`/`sourcePath` 之一。密级默认 `L2 重要/秘密`，编制默认空，校对与审核默认「待定」。生成后复述本地路径与大小。
+`jswj_render_docx` 必填 `title` 与 `markdown`/`sourcePath` 之一；`docNumber` 传任务的 `basic.number`，会同时写入封面和页眉右上角。密级默认 `L2 重要/秘密`，编制默认空，校对与审核默认「待定」。生成后复述本地路径与大小。
 
 发布：
 

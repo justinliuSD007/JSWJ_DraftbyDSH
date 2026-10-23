@@ -518,6 +518,25 @@ def trim_front_matter(doc):
     return len(targets)
 
 
+def fill_headers(doc, number):
+    """把文件编号写入页眉；模板页眉占位为「文件编号：XXXXXXXXXXX」。"""
+    if not number:
+        return
+    for section in doc.sections:
+        for paragraph in section.header.paragraphs:
+            if "文件编号" not in paragraph.text:
+                continue
+            new_text = re.sub(r"文件编号\s*[:：]\s*X+", f"文件编号：{number}", paragraph.text)
+            if new_text == paragraph.text:
+                continue
+            if paragraph.runs:
+                paragraph.runs[0].text = new_text
+                for run in paragraph.runs[1:]:
+                    run.text = ""
+            else:
+                paragraph.add_run(new_text)
+
+
 def fill_cover(doc, meta):
     for p in doc.paragraphs:
         try:
@@ -607,6 +626,7 @@ def build(args):
         meta["文件编号"] = args.doc_number
 
     fill_cover(doc, meta)
+    fill_headers(doc, args.doc_number)
     fill_revision(doc, args)
 
     started = False
