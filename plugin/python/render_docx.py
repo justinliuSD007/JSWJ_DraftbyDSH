@@ -249,51 +249,111 @@ def apply_template_table_format(table):
         cell_mar.append(m)
 
 
+def grid_span(cell):
+    tcPr = cell._tc.tcPr
+    el = tcPr.find(qn("w:gridSpan")) if tcPr is not None else None
+    return int(el.get(qn("w:val"))) if el is not None and el.get(qn("w:val")) else 1
+
+
+def merge_header_cells(table, header_count):
+    """合并多行表头：先横向合并空续列，再纵向合并空续行。"""
+    if header_count <= 1:
+        return
+    ncols = len(table.columns)
+    # 横向：某格有文字，右侧连续空格并入该格
+    for r in range(header_count):
+        c = 0
+        while c < ncols:
+            if not table.cell(r, c).text.strip():
+                c += 1
+                continue
+            end = c
+            while end + 1 < ncols and not table.cell(r, end + 1).text.strip():
+                end += 1
+            if end > c:
+                table.cell(r, c).merge(table.cell(r, end))
+            c = end + 1
+    # 纵向：空格向上并入；若上方是横向合并的大表头则跳过
+    for c in range(ncols):
+        for r in range(header_count - 1, 0, -1):
+            cell = table.cell(r, c)
+            if cell.text.strip():
+                continue
+            above = table.cell(r - 1, c)
+            if above._tc is cell._tc or grid_span(above) > 1:
+                continue
+            merged = above.merge(cell)
+            text = above.text.strip()
+            if text:
+                for paragraph in merged.paragraphs[1:]:
+                    paragraph._element.getparent().remove(paragraph._element)
+                paragraph = merged.paragraphs[0]
+                for run in list(paragraph.runs):
+                    run.text = ""
+                add_runs(paragraph, text, base_bold=True)
+                shade(merged)
+
+
 def add_table(doc, rows):
     cells = []
     for r in rows:
         cells.append([c.strip() for c in r.strip("|").split("|")])
     if len(cells) < 2:
         return
-    # 只把真正的 Markdown 分隔行（|---|---|）当分隔行跳过，其余行都是内容，
-    # 避免多行表头的第二行被误当分隔行丢掉。
+
     def is_sep(row):
         return bool(row) and all(re.fullmatch(r":?-{2,}:?", c or "") for c in row)
 
-    header = cells[0]
-    body = [r for r in cells[1:] if not is_sep(r)]
-    ncols = len(header)
+    sep_idx = next((i for i, row in enumerate(cells) if is_sep(row)), None)
+    if sep_idx is None:
+        header_rows = [cells[0]]
+        body = cells[1:]
+    else:
+        header_rows = cells[:sep_idx] or [cells[0]]
+        body = [row for row in cells[sep_idx + 1:] if not is_sep(row)]
+        # Markdown 只能把分隔行放在第一行表头之后；像“集成与验证阶段”
+    # 这种多行表头，后续表头行要靠“首列为空、其他列有短标题”识别出来。
+    while (
+        body
+        and len(header_rows) < 3
+        and not body[0][0].strip()
+        and any(x.strip() for x in body[0][1:])
+    ):
+        header_rows.append(body.pop(0))
+    ncols = max(len(row) for row in header_rows + body)
 
-    # 字号与行距沿用模板「正文表格内容」样式（五号、单倍行距），不再压缩字号。
-    table = doc.add_table(rows=1 + len(body), cols=ncols)
+    table = doc.add_table(rows=len(header_rows) + len(body), cols=ncols)
     apply_template_table_format(table)
     cell_style = TBL_CELL_STYLE
 
-    trPr = table.rows[0]._tr.get_or_add_trPr()
-    trPr.append(OxmlElement("w:tblHeader"))
-
-    for c, text in enumerate(header):
-        cell = table.rows[0].cells[c]
-        cell.text = ""
-        par = cell.paragraphs[0]
-        try:
-            par.style = doc.styles[cell_style]
-        except KeyError:
-            pass
-        par.paragraph_format.first_line_indent = Cm(0)
-        par.paragraph_format.left_indent = Cm(0)
-        par.paragraph_format.space_before = Pt(0)
-        par.paragraph_format.space_after = Pt(0)
-        par.paragraph_format.line_spacing = 1.0
-        par.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
-        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        add_runs(par, text, base_bold=True, color=RGBColor(0x00, 0x00, 0x00))
-        shade(cell)
+    for r, hrow in enumerate(header_rows):
+        trPr = table.rows[r]._tr.get_or_add_trPr()
+        trPr.append(OxmlElement("w:tblHeader"))
+        for c in range(ncols):
+            text = hrow[c] if c < len(hrow) else ""
+            cell = table.rows[r].cells[c]
+            cell.text = ""
+            par = cell.paragraphs[0]
+            try:
+                par.style = doc.styles[cell_style]
+            except KeyError:
+                pass
+            par.paragraph_format.first_line_indent = Cm(0)
+            par.paragraph_format.left_indent = Cm(0)
+            par.paragraph_format.space_before = Pt(0)
+            par.paragraph_format.space_after = Pt(0)
+            par.paragraph_format.line_spacing = 1.0
+            par.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            add_runs(par, text, base_bold=True, color=RGBColor(0x00, 0x00, 0x00))
+            shade(cell)
 
     for row_obj in table.rows:
         row_obj._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
 
-    for r, row in enumerate(body, start=1):
+    merge_header_cells(table, len(header_rows))
+
+    for r, row in enumerate(body, start=len(header_rows)):
         for c in range(ncols):
             text = row[c] if c < len(row) else ""
             cell = table.rows[r].cells[c]
@@ -315,10 +375,15 @@ def add_table(doc, rows):
     def weight(s):
         return sum(2 if ord(ch) > 127 else 1 for ch in s)
 
+    header_texts = []
+    for c in range(ncols):
+        values = [table.cell(r, c).text.strip() for r in range(len(header_rows))]
+        header_texts.append(max(values, key=weight))
+
     weights = []
     min_widths = []
     for c in range(ncols):
-        texts = [header[c]] + [r[c] if c < len(r) else "" for r in body]
+        texts = [header_texts[c]] + [r[c] if c < len(r) else "" for r in body]
         lengths = [weight(t) for t in texts]
         longest = max(lengths)
         average = sum(lengths) / len(lengths)
@@ -332,7 +397,7 @@ def add_table(doc, rows):
             for word in re.findall(r"[A-Za-z0-9][A-Za-z0-9./+-]*", t):
                 token = max(token, len(word))
         # 表头必须尽量一行放得下，不能出现“时间进度安/排”这种拆字换行。
-        header_min = min(2600, int(weight(header[c]) * 0.19 * 567) + 220)
+        header_min = min(2600, int(weight(header_texts[c]) * 0.19 * 567) + 220)
         # 长段落列不能只靠权重分，给最长单元格一个宽度下限，避免整列被压成细条。
         content_min = min(3000, int(longest * 0.19 * 567) + 220)
         min_widths.append(max(1100, header_min, content_min, int(token * 0.19 * 567) + 220))
@@ -383,7 +448,7 @@ def add_table(doc, rows):
     # 整表尽量落在同一页：放得下的小表把各行“与下段同页”串起来，Word 会把整表
     # 移到下一页，避免被换页截断；超过一页的大表不整表锁定（否则会把表题/引导句
     # 甩在上一页页末），只把表头行与首行数据锁在一起，分页处 repeat 表头。
-    total_chars = sum(len("".join(r)) for r in body) + sum(len(x) for x in header)
+    total_chars = sum(len("".join(r)) for r in body) + sum(len(x) for x in header_texts)
     rows_list = list(table.rows)
     keep_whole = len(rows_list) <= 7 and total_chars <= 900
     chain = rows_list[:-1] if keep_whole else rows_list[:1]
@@ -396,13 +461,13 @@ def add_table(doc, rows):
             for par in cell.paragraphs:
                 par.paragraph_format.keep_together = True
 
-    merge_group_columns(table)
+    merge_group_columns(table, len(header_rows))
 
 
 GROUP_HEADERS = {"序号", "系统功能", "研制阶段", "阶段", "过程", "类型", "类别"}
 
 
-def merge_group_columns(table):
+def merge_group_columns(table, header_count=1):
     """按分组列纵向合并：序号/系统功能/研制阶段/过程等相同值或空续行合并。"""
     rows = list(table.rows)
     if len(rows) < 3:
@@ -412,12 +477,12 @@ def merge_group_columns(table):
     headers = [re.sub(r"[*`]", "", text).strip() for text in texts[0]]
 
     for c in range(ncols - 1, -1, -1):
-        if headers[c] not in GROUP_HEADERS:
+        if headers[c] not in GROUP_HEADERS and "飞机的研制阶段" not in headers[c]:
             continue
         groups = []
         current = None
-        start = 1
-        for r in range(1, len(rows)):
+        start = header_count
+        for r in range(header_count, len(rows)):
             value = texts[r][c]
             if value:
                 if current is None:
