@@ -1303,6 +1303,34 @@ async function healthCheck(cfg) {
   return { ok: issues.length === 0, checks, issues, warnings };
 }
 
+async function updateWordFields(filePath) {
+  if (process.platform !== "win32") return false;
+  const escaped = String(filePath).replace(/'/g, "''");
+  const script = [
+    "$ErrorActionPreference='Stop'",
+    "$word=$null",
+    "try {",
+    "  $word=New-Object -ComObject Word.Application",
+    "  $word.Visible=$false",
+    "  $word.DisplayAlerts=0",
+    `  $doc=$word.Documents.Open('${escaped}',$false,$false)`,
+    "  $doc.Fields.Update() | Out-Null",
+    "  foreach ($toc in $doc.TablesOfContents) { $toc.Update() | Out-Null }",
+    "  $doc.Save()",
+    "  $doc.Close($false)",
+    "} finally { if ($word) { $word.Quit() } }",
+  ].join("; ");
+  try {
+    await execFileAsync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      timeout: 120000,
+      windowsHide: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function apply(ctx, config = {}) {
   const cfg = {
     appId: process.env.JSWJ_APP_ID ?? "",
@@ -1319,6 +1347,7 @@ function apply(ctx, config = {}) {
     updateOwner: process.env.JSWJ_UPDATE_OWNER ?? "justinliuSD007",
     updateRepo: process.env.JSWJ_UPDATE_REPO ?? "JSWJ_DraftbyDSH",
     githubToken: process.env.JSWJ_GITHUB_TOKEN ?? "",
+    updateWordFields: true,
     pythonPath: process.env.JSWJ_PYTHON ?? "",
     outputDir: "",
     ...config,
@@ -1740,6 +1769,7 @@ function apply(ctx, config = {}) {
         }
         if (!payload.ok) fail(`渲染器报错：${payload.error ?? "未知错误"}`);
 
+        if (cfg.updateWordFields !== false) await updateWordFields(payload.path).catch(() => {});
         const info = await stat(payload.path);
         return {
           path: payload.path,

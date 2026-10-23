@@ -21,11 +21,11 @@ import traceback
 from pathlib import Path
 
 from docx import Document
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Cm, Emu, Pt, RGBColor
 
 BODY_STYLE = "标准文件_正文"
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -61,6 +61,19 @@ def parse(md):
         m = re.match(r"^@@IMG\s+(\S+)\s+([\d.]+)@@$", s)
         if m:
             blocks.append(("img", m.group(1), float(m.group(2))))
+            i += 1
+            continue
+
+        m = re.match(r"^(图|表)\s*([0-9A-Za-z][0-9A-Za-z.-]*)\s*(.*)$", s)
+        if m:
+            blocks.append(("caption", m.group(1), m.group(2), m.group(3).strip()))
+            i += 1
+            continue
+
+        # 少数源文件图题不带编号（如“图 安全性评估过程”），同样按模板图题排版
+        m = re.match(r"^(图|表)\s+([^。；，,]{2,40})$", s)
+        if m:
+            blocks.append(("caption", m.group(1), "", m.group(2).strip()))
             i += 1
             continue
 
@@ -154,13 +167,75 @@ def add_runs(par, text, base_bold=False, size=None, color=None):
             run.font.color.rgb = color
 
 
-def shade(cell, hex_color="F2F2F2"):
+def shade(cell, hex_color="F1F1F1"):
     tcPr = cell._tc.get_or_add_tcPr()
+    old = tcPr.find(qn("w:shd"))
+    if old is not None:
+        tcPr.remove(old)
     shd = OxmlElement("w:shd")
     shd.set(qn("w:val"), "clear")
     shd.set(qn("w:color"), "auto")
     shd.set(qn("w:fill"), hex_color)
     tcPr.append(shd)
+
+
+# GY-F003 模板正文表格：Normal Table 底样式 + 单线 0.5 磅边框、固定列宽 8124 dxa
+# （14.33 cm）、表头 F1F1F1 底纹、表头垂直居中、单元格段落用「正文表格内容」。
+TBL_W_DXA = 8124
+TBL_CELL_STYLE = "正文表格内容"
+IMG_STYLE = "图片"
+
+
+def apply_template_table_format(table):
+    """按 GY-F003 模板正文表格的 tblPr 重写表格属性。"""
+    tblPr = table._tbl.tblPr
+    for tag in ("w:tblW", "w:jc", "w:tblBorders", "w:shd", "w:tblLayout",
+                "w:tblCellMar", "w:tblLook", "w:tblInd"):
+        el = tblPr.find(qn(tag))
+        if el is not None:
+            tblPr.remove(el)
+
+    style = tblPr.find(qn("w:tblStyle"))
+    if style is None:
+        style = OxmlElement("w:tblStyle")
+        tblPr.insert(0, style)
+    style.set(qn("w:val"), "26")
+
+    def add_child(tag):
+        el = OxmlElement(tag)
+        tblPr.append(el)
+        return el
+
+    tblW = add_child("w:tblW")
+    tblW.set(qn("w:w"), str(TBL_W_DXA))
+    tblW.set(qn("w:type"), "dxa")
+
+    jc = add_child("w:jc")
+    jc.set(qn("w:val"), "center")
+
+    borders = add_child("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        e = OxmlElement("w:" + edge)
+        e.set(qn("w:val"), "single")
+        e.set(qn("w:color"), "auto")
+        e.set(qn("w:sz"), "4")
+        e.set(qn("w:space"), "0")
+        borders.append(e)
+
+    shd = add_child("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), "auto")
+
+    layout = add_child("w:tblLayout")
+    layout.set(qn("w:type"), "fixed")
+
+    cell_mar = add_child("w:tblCellMar")
+    for name, width in (("top", "0"), ("left", "108"), ("bottom", "0"), ("right", "108")):
+        m = OxmlElement("w:" + name)
+        m.set(qn("w:w"), width)
+        m.set(qn("w:type"), "dxa")
+        cell_mar.append(m)
 
 
 def add_table(doc, rows):
@@ -169,20 +244,19 @@ def add_table(doc, rows):
         cells.append([c.strip() for c in r.strip("|").split("|")])
     if len(cells) < 2:
         return
-    header, body = cells[0], cells[2:]
+    # 只把真正的 Markdown 分隔行（|---|---|）当分隔行跳过，其余行都是内容，
+    # 避免多行表头的第二行被误当分隔行丢掉。
+    def is_sep(row):
+        return bool(row) and all(re.fullmatch(r":?-{2,}:?", c or "") for c in row)
+
+    header = cells[0]
+    body = [r for r in cells[1:] if not is_sep(r)]
     ncols = len(header)
 
-    # 密度自适应：内容多的表格适当缩小字号与行距，尽量整表落在一页内。
-    body_chars = sum(len("".join(r)) for r in body)
-    if body_chars >= 1100:
-        fs, pad = 8.5, 0.5
-    else:
-        fs, pad = 9.0, 1.0
-
+    # 字号与行距沿用模板「正文表格内容」样式（五号、单倍行距），不再压缩字号。
     table = doc.add_table(rows=1 + len(body), cols=ncols)
-    table.style = "Table Grid"
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    table.autofit = True
+    apply_template_table_format(table)
+    cell_style = TBL_CELL_STYLE
 
     trPr = table.rows[0]._tr.get_or_add_trPr()
     trPr.append(OxmlElement("w:tblHeader"))
@@ -191,10 +265,16 @@ def add_table(doc, rows):
         cell = table.rows[0].cells[c]
         cell.text = ""
         par = cell.paragraphs[0]
-        par.paragraph_format.line_spacing = 1.0
-        par.paragraph_format.space_before = Pt(2)
-        par.paragraph_format.space_after = Pt(2)
-        add_runs(par, text, base_bold=True, size=Pt(fs))
+        try:
+            par.style = doc.styles[cell_style]
+        except KeyError:
+            pass
+        par.paragraph_format.first_line_indent = Cm(0)
+        par.paragraph_format.left_indent = Cm(0)
+        par.paragraph_format.space_before = Pt(0)
+        par.paragraph_format.space_after = Pt(0)
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        add_runs(par, text, base_bold=True, color=RGBColor(0x00, 0x00, 0x00))
         shade(cell)
 
     for row_obj in table.rows:
@@ -206,10 +286,16 @@ def add_table(doc, rows):
             cell = table.rows[r].cells[c]
             cell.text = ""
             par = cell.paragraphs[0]
-            par.paragraph_format.line_spacing = 1.0
-            par.paragraph_format.space_before = Pt(pad)
-            par.paragraph_format.space_after = Pt(pad)
-            add_runs(par, text, size=Pt(fs))
+            try:
+                par.style = doc.styles[cell_style]
+            except KeyError:
+                pass
+            par.paragraph_format.first_line_indent = Cm(0)
+            par.paragraph_format.left_indent = Cm(0)
+            par.paragraph_format.space_before = Pt(0)
+            par.paragraph_format.space_after = Pt(0)
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            add_runs(par, text, color=RGBColor(0x00, 0x00, 0x00))
 
     def weight(s):
         return sum(2 if ord(ch) > 127 else 1 for ch in s)
@@ -219,18 +305,18 @@ def add_table(doc, rows):
         longest = max([weight(header[c])] + [weight(r[c]) if c < len(r) else 0 for r in body])
         weights.append(max(longest, 6))
 
-    total_cm = 14.6
-    min_cm = 2.4
-    raw = [total_cm * w / sum(weights) for w in weights]
-    raw = [max(x, min_cm) for x in raw]
-    scale = total_cm / sum(raw)
-    widths = [x * scale for x in raw]
+    total_dxa = TBL_W_DXA
+    min_dxa = 1361  # 2.4 cm
+    raw = [total_dxa * w / sum(weights) for w in weights]
+    raw = [max(x, min_dxa) for x in raw]
+    scale = total_dxa / sum(raw)
+    widths_dxa = [x * scale for x in raw]
 
-    for idx, cm in enumerate(widths):
-        table.columns[idx].width = Cm(cm)
+    for idx, dxa in enumerate(widths_dxa):
+        table.columns[idx].width = Emu(int(round(dxa * 635)))  # 1 dxa = 635 EMU
     for row in table.rows:
         for idx, cell in enumerate(row.cells):
-            cell.width = Cm(widths[idx])
+            cell.width = Emu(int(round(widths_dxa[idx] * 635)))
 
     # 整表尽量落在同一页：除末行外，各单元格段落设“与下段同页”，
     # Word 会把放得下的表格整体移到下一页，避免被换页截断。
@@ -244,7 +330,107 @@ def add_table(doc, rows):
             for par in cell.paragraphs:
                 par.paragraph_format.keep_together = True
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+def add_field(paragraph, instruction):
+    def run_with(child):
+        run = OxmlElement("w:r")
+        run.append(child)
+        paragraph._p.append(run)
+
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    run_with(begin)
+
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = f" {instruction} "
+    run_with(instr)
+
+    separate = OxmlElement("w:fldChar")
+    separate.set(qn("w:fldCharType"), "separate")
+    run_with(separate)
+
+    result = OxmlElement("w:t")
+    result.text = "—"
+    run_with(result)
+
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    run_with(end)
+
+
+def add_caption(doc, kind, number, text, bookmark):
+    """图/表题：按源编号原样写入，并加书签供图目录/表目录取页码。"""
+    style_name = "图题注" if kind == "图" else "表题注"
+    if style_name not in doc.styles:
+        try:
+            from docx.enum.style import WD_STYLE_TYPE
+
+            style = doc.styles.add_style(style_name, WD_STYLE_TYPE.PARAGRAPH)
+            style.base_style = doc.styles["Caption"]
+        except Exception:
+            style_name = "Caption"
+    label = " ".join(x for x in (kind, number) if x)
+    paragraph = doc.add_paragraph(style=style_name)
+    if text:
+        paragraph.add_run(f"{label} {text}")
+    else:
+        paragraph.add_run(label)
+    paragraph.paragraph_format.keep_together = True
+    if kind == "表":
+        paragraph.paragraph_format.keep_with_next = True
+
+    start = OxmlElement("w:bookmarkStart")
+    start.set(qn("w:id"), str(abs(hash(bookmark)) % 100000))
+    start.set(qn("w:name"), bookmark)
+    end = OxmlElement("w:bookmarkEnd")
+    end.set(qn("w:id"), start.get(qn("w:id")))
+    paragraph._p.insert(0, start)
+    paragraph._p.append(end)
+
+
+def add_toc_entry(doc, heading, text, bookmark):
+    paragraph = doc.add_paragraph(style="table of figures")
+    paragraph.add_run(text)
+    paragraph.add_run("\t")
+    add_field(paragraph, f"PAGEREF {bookmark} \\h")
+    heading._p.addnext(paragraph._p)
+    return paragraph
+
+
+def fill_static_toc(doc, figures, tables):
+    paragraphs = list(doc.paragraphs)
+    fig_heading = tab_heading = None
+    for p in paragraphs:
+        normalized = p.text.replace(" ", "").replace("\u3000", "")
+        if normalized == "图目录":
+            fig_heading = p
+        elif normalized == "表目录":
+            tab_heading = p
+    if fig_heading is None or tab_heading is None:
+        return
+
+    # 删掉模板自带的图目录、表目录示例条目和目录域
+    fig_idx = paragraphs.index(fig_heading)
+    tab_idx = paragraphs.index(tab_heading)
+    body_start = len(paragraphs)
+    for idx in range(tab_idx + 1, len(paragraphs)):
+        try:
+            style_name = paragraphs[idx].style.name
+        except Exception:
+            style_name = ""
+        if style_name == "Heading 1":
+            body_start = idx
+            break
+    for p in paragraphs[fig_idx + 1 : tab_idx]:
+        p._element.getparent().remove(p._element)
+    for p in paragraphs[tab_idx + 1 : body_start]:
+        p._element.getparent().remove(p._element)
+
+    for caption in reversed(figures):
+        add_toc_entry(doc, fig_heading, f"图 {caption['number']} {caption['text']}".strip(), caption["bookmark"])
+    for caption in reversed(tables):
+        add_toc_entry(doc, tab_heading, f"表 {caption['number']} {caption['text']}".strip(), caption["bookmark"])
 
 
 # ------------------------------------------------------------------ template
@@ -276,7 +462,7 @@ def trim_front_matter(doc):
             first_sect = pPr.find(qn("w:sectPr"))
             break
 
-    targets = children[fig:body_start] + children[body_start:]
+    targets = children[body_start:]
     for ch in targets:
         if ch.tag == qn("w:sectPr"):
             continue
@@ -393,6 +579,9 @@ def build(args):
     fill_revision(doc, args)
 
     started = False
+    figures = []
+    tables = []
+    caption_seq = 0
     for blk in blocks:
         kind = blk[0]
 
@@ -402,8 +591,11 @@ def build(args):
                 continue  # 文档标题已在封面体现
             nlevel = {2: 1, 3: 2, 4: 3}.get(level, 3)
             clean = LINK_RE.sub(lambda m: m.group(1), text).replace("`", "").replace("**", "")
+            clean = re.sub(r"^\s*\d+(?:\.\d+)*\s*", "", clean)
             h = doc.add_heading(clean, level=nlevel)
-            cancel_numbering(h)
+            # 标题不与正文分页：章/节标题不落在页末
+            h.paragraph_format.keep_with_next = True
+            h.paragraph_format.keep_together = True
             started = True
             continue
 
@@ -413,6 +605,7 @@ def build(args):
         if kind == "p":
             par = doc.add_paragraph(style=BODY_STYLE)
             par.paragraph_format.first_line_indent = Cm(0.74)
+            par.paragraph_format.widow_control = True
             add_runs(par, blk[1])
 
         elif kind == "ul":
@@ -456,6 +649,16 @@ def build(args):
             shd.set(qn("w:fill"), "F5F5F5")
             pPr.append(shd)
 
+        elif kind == "caption":
+            caption_seq += 1
+            bookmark = f"_JswjCap{caption_seq}"
+            add_caption(doc, blk[1], blk[2], blk[3], bookmark)
+            entry = {"number": blk[2], "text": blk[3], "bookmark": bookmark}
+            if blk[1] == "图":
+                figures.append(entry)
+            else:
+                tables.append(entry)
+
         elif kind == "table":
             # 表题与被表题说明的表格同页
             if doc.paragraphs:
@@ -471,11 +674,15 @@ def build(args):
             if not path.is_absolute():
                 path = Path(args.base_dir) / raw if args.base_dir else (md_path.parent / raw)
             if path.exists():
-                doc.add_picture(str(path), width=Cm(blk[2]))
-                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                doc.paragraphs[-1].paragraph_format.space_after = Pt(8)
+                par = doc.add_paragraph(style=IMG_STYLE)
+                par.add_run().add_picture(str(path), width=Cm(blk[2]))
+                # 图片与图题同页，不被换页截断
+                par.paragraph_format.keep_with_next = True
+                par.paragraph_format.keep_together = True
             else:
                 print(f"warning: missing image {path}", file=sys.stderr)
+
+    fill_static_toc(doc, figures, tables)
 
     settings = doc.settings.element
     for el in settings.findall(qn("w:updateFields")):

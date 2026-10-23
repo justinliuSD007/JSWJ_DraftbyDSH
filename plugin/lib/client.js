@@ -1460,8 +1460,8 @@ window.__ModuleLoader__.load({
             const revisionExtra =
               "请读取 selfcheck.items 与本轮文档，汇总为 revision.items（severity / location / problem / action）并写回任务；不要直接改正文。";
             const generationExtra = hasMirror
-              ? "本次任务含统一套用模板资料：跳过内容起草，直接以该资料的章节结构、正文内容、表格与图片为底稿，整理为 GY-F003 章节 Markdown；不改写、不扩写、不补写，写回 generation.status=done、draft.markdown、draft.ready=true、draft.version 加 1。"
-              : "生成后自动自检并修订，直到没有严重项；再写回 generation.status=done、selfcheck.status=clean、revision.done=true，并把成稿正文写入 draft.markdown、draft.ready=true、draft.version 加 1。";
+              ? "本次任务含统一套用模板资料：跳过内容起草，直接以该资料的章节结构、正文内容、表格与图片为底稿，整理为 GY-F003 章节 Markdown；不改写、不扩写、不补写，保留原图/表题注，写回 generation.status=done、draft.markdown、draft.ready=true、draft.version 加 1。"
+              : "生成后自动自检并修订，直到没有严重项；表格前写「表 章-序号 标题」，图片后写「图 章-序号 标题」，供图目录/表目录生成；再写回 generation.status=done、selfcheck.status=clean、revision.done=true，并把成稿正文写入 draft.markdown、draft.ready=true、draft.version 加 1。";
             const selfcheckItems = selfcheck.items || [];
             const selfcheckBlockers = selfcheckItems.filter((item) => item.severity === "严重");
             const selfcheckFinished = Boolean(selfcheck.status) && selfcheck.status !== "pending";
