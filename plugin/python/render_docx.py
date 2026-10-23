@@ -344,6 +344,9 @@ def add_table(doc, rows):
             par.paragraph_format.space_after = Pt(0)
             par.paragraph_format.line_spacing = 1.0
             par.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+            # 多行表头必须整块留在同一页，不能把“试飞测试/适航验证”甩到下一页。
+            par.paragraph_format.keep_with_next = True
+            par.paragraph_format.keep_together = True
             cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             add_runs(par, text, base_bold=True, color=RGBColor(0x00, 0x00, 0x00))
             shade(cell)
