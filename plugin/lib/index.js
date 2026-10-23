@@ -340,11 +340,34 @@ async function extractSourceText(cfg, filePath, ext, imagesDir = "") {
   fail(`暂不支持 ${ext}，请上传 .docx、.md、.markdown 或 .txt`);
 }
 
+const TITLE_ALIASES = {
+  资料库: "参考资料库",
+  参考资料库: "资料库",
+  草稿库: "技术资料草稿库",
+  技术资料草稿库: "草稿库",
+  出稿库: "技术资料出稿库",
+  技术资料出稿库: "出稿库",
+};
+
+function comparableTitle(value) {
+  return String(value ?? "")
+    .replace(/\s+/g, "")
+    .replace(/^(技术资料|参考资料|资料)/, "")
+    .replace(/库$/, "");
+}
+
 async function ensureWikiChild(cfg, parent, title) {
   const space = spaceRoot(cfg);
   const query = parent ? `&parent_node_token=${encodeURIComponent(parent)}` : "";
   const listed = await api(cfg, `/wiki/v2/spaces/${space}/nodes?page_size=50${query}`);
-  const found = (listed.items ?? []).find((item) => item.title === title);
+  const items = listed.items ?? [];
+  const compact = String(title).replace(/\s+/g, "");
+  const exact = items.find((item) => item.title === title);
+  const aliasTarget = TITLE_ALIASES[compact];
+  const alias = aliasTarget ? items.find((item) => String(item.title).replace(/\s+/g, "") === aliasTarget) : null;
+  const normalized = comparableTitle(title);
+  const similar = normalized ? items.find((item) => comparableTitle(item.title) === normalized) : null;
+  const found = exact || alias || similar;
   if (found) return found.node_token;
   const body = { obj_type: "docx", node_type: "origin", title };
   if (parent) body.parent_node_token = parent;
@@ -363,7 +386,7 @@ async function downloadDriveFile(cfg, fileToken) {
   const res = await fetch(`${API}/drive/v1/files/${encodeURIComponent(fileToken)}/download`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) fail(`读取资料库已有文件失败：HTTP ${res.status}`);
+  if (!res.ok) fail(`读取参考资料库已有文件失败：HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -737,7 +760,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           const textPath = join(dir, `${safeName(name, "资料")}.txt`);
           await writeFile(textPath, text, "utf8");
 
-          const library = await ensureWikiChild(cfg, cfg.rootToken || "", "资料库");
+          const library = await ensureWikiChild(cfg, cfg.rootToken || "", "参考资料库");
           const tierNode = await ensureWikiChild(cfg, library, String(body.tier || "未分级"));
           const boardNode = await ensureWikiChild(cfg, tierNode, String(body.board || "未分类"));
 
@@ -761,7 +784,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
                   wikiToken: existing.node_token,
                 };
               } else {
-                throw new Error(`资料库已有同名文件「${name}」且内容不同，请改名后重试`);
+                throw new Error(`参考资料库已有同名文件「${name}」且内容不同，请改名后重试`);
               }
             }
           }
@@ -776,7 +799,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             preview: text.slice(0, 240),
             url: published.url,
             nodeToken: published.wikiToken,
-            library: "资料库",
+            library: "参考资料库",
             deduped,
           };
         } finally {

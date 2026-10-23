@@ -1045,7 +1045,7 @@ window.__ModuleLoader__.load({
                     },
                   ],
                 });
-                setNotice(uploaded.deduped ? `资料库已有相同文件，已复用：${uploaded.title}` : `已上传并留存到资料库：${uploaded.title}`);
+                setNotice(uploaded.deduped ? `参考资料库已有相同文件，已复用：${uploaded.title}` : `已上传并留存到参考资料库：${uploaded.title}`);
               });
               event.target.value = "";
             };
@@ -1069,7 +1069,7 @@ window.__ModuleLoader__.load({
                   "label",
                   {
                     style: { ...s.btnSecondary, display: "inline-flex", alignItems: "center", cursor: busy ? "default" : "pointer" },
-                    title: "上传 docx / md，解析并留存到知识库资料库",
+                    title: "上传 docx / md，解析并留存到知识库参考资料库",
                   },
                   "上传 docx / md",
                   h("input", {
@@ -1083,7 +1083,7 @@ window.__ModuleLoader__.load({
               ),
               h("div", { style: { ...s.list, marginTop: 12 } },
                 form.sources.length === 0
-                  ? h("div", { style: s.note }, "还没有参考资料。粘贴飞书云文档链接，或上传 docx / md；上传的文件会解析并留存到 资料库/{层级}/{板块}/。")
+                  ? h("div", { style: s.note }, "还没有参考资料。粘贴飞书云文档链接，或上传 docx / md；上传的文件会解析并留存到 参考资料库/{层级}/{板块}/。")
                   : form.sources.map((item, i) =>
                       h(
                         "div",
@@ -1100,8 +1100,8 @@ window.__ModuleLoader__.load({
                               ? `已解析 · ${item.chars} 字${
                                   item.kind === "upload"
                                     ? item.deduped
-                                      ? " · 资料库已有相同文件"
-                                      : " · 已留存资料库"
+                                      ? " · 参考资料库已有相同文件"
+                                      : " · 已留存参考资料库"
                                     : ""
                                 }${item.images?.length ? ` · ${item.images.length} 张图` : ""}`
                               : `解析失败：${item.error || ""}`,

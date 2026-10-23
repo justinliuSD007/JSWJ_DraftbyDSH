@@ -50,7 +50,7 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 同一步优先复用任务 `sessions` 里记录的会话；修订与生成都以任务里的 `draft.markdown` 为准，不依赖聊天历史，换会话不会丢正文。
 
-页面 D3 上传的 docx / md 会留存到知识库 `资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
+页面 D3 上传的 docx / md 会留存到知识库 `参考资料库/{层级}/{板块}/`，任务 `sources[]` 里带 `textPath`（本地纯文本）；需要读资料内容时直接读该文件，不要尝试用 `jswj_doc_read` 读 file 类型节点。
 
 参考资料参考程度看 `sources[].mode`：
 
