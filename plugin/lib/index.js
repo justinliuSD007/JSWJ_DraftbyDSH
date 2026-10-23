@@ -608,7 +608,16 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const boardNode = await ensureWikiChild(cfg, tierNode, String(task.data.attrs?.board || "未分类"));
         const typeNode = await ensureWikiChild(cfg, boardNode, String(task.data.basic?.type || "未分类"));
 
-        const renderArgs = { markdown, title: `${baseName}-草稿-v${version}`, docNumber: task.data.basic?.number || "" };
+        const renderArgs = {
+          markdown,
+          title: `${baseName}-草稿-v${version}`,
+          docNumber: task.data.basic?.number || "",
+          author: task.data.basic?.author || "",
+          checker: task.data.basic?.checker || "",
+          reviewer: task.data.basic?.reviewer || "",
+          approver: task.data.basic?.approver || "",
+          version: task.data.basic?.version || "A0",
+        };
         if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
         const render = await tool("jswj_render_docx").execute(renderArgs, {});
         const published = await tool("jswj_publish_docx").execute({ filePath: render.path, parent: typeNode, name: fileName }, {});
@@ -658,7 +667,16 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         let renderedPath = "";
 
         if (!published) {
-          const renderArgs = { markdown, title: baseName, docNumber: number };
+          const renderArgs = {
+            markdown,
+            title: baseName,
+            docNumber: number,
+            author: task.data.basic?.author || "",
+            checker: task.data.basic?.checker || "",
+            reviewer: task.data.basic?.reviewer || "",
+            approver: task.data.basic?.approver || "",
+            version: task.data.basic?.version || "A0",
+          };
           if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
           const render = await tool("jswj_render_docx").execute(renderArgs, {});
           renderedPath = render.path;
@@ -1674,6 +1692,7 @@ function apply(ctx, config = {}) {
         author: { type: "string", description: "编制人，如「张三 2026.10.22」" },
         checker: { type: "string", description: "校对" },
         reviewer: { type: "string", description: "审核" },
+        approver: { type: "string", description: "批准" },
         docNumber: { type: "string", description: "文件编号，可空" },
         version: { type: "string", description: "版本号，默认 A0" },
         revisionNote: { type: "string", description: "修订说明，默认「1 期方案初版」" },
@@ -1734,6 +1753,7 @@ function apply(ctx, config = {}) {
           "--author", args.author ?? "",
           "--checker", args.checker ?? "待定",
           "--reviewer", args.reviewer ?? "待定",
+          "--approver", args.approver ?? "待定",
           "--doc-number", args.docNumber ?? "",
           "--version", args.version ?? "A0",
           "--revision-note", args.revisionNote ?? "1 期方案初版",

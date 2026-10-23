@@ -93,9 +93,20 @@ def parse(md):
 
         if re.match(r"^\d+\.\s", s):
             items = []
-            while i < len(lines) and re.match(r"^\d+\.\s", lines[i].strip()):
-                items.append(lines[i].strip())
-                i += 1
+            while i < len(lines):
+                current = lines[i].strip()
+                if re.match(r"^\d+\.\s", current):
+                    items.append(current)
+                    i += 1
+                    continue
+                if not current:
+                    j = i
+                    while j < len(lines) and not lines[j].strip():
+                        j += 1
+                    if j < len(lines) and re.match(r"^\d+\.\s", lines[j].strip()):
+                        i = j
+                        continue
+                break
             blocks.append(("ol", items))
             continue
 
@@ -316,7 +327,9 @@ def add_table(doc, rows):
         for t in texts:
             for word in re.findall(r"[A-Za-z0-9][A-Za-z0-9./+-]*", t):
                 token = max(token, len(word))
-        min_widths.append(max(1100, int(token * 0.19 * 567) + 220))
+        # 表头必须尽量一行放得下，不能出现“时间进度安/排”这种拆字换行。
+        header_min = min(2600, int(weight(header[c]) * 0.19 * 567) + 220)
+        min_widths.append(max(1100, header_min, int(token * 0.19 * 567) + 220))
 
     total_dxa = TBL_W_DXA
     if sum(min_widths) >= total_dxa:
@@ -621,6 +634,8 @@ def build(args):
         "编制": args.author or "待定",
         "校对": args.checker or "待定",
         "审核": args.reviewer or "待定",
+        "批准": args.approver or "待定",
+        "版本": args.version,
     }
     if args.doc_number:
         meta["文件编号"] = args.doc_number
@@ -677,11 +692,12 @@ def build(args):
                 add_runs(par, "· " + item)
 
         elif kind == "ol":
-            for item in blk[1]:
+            for idx, item in enumerate(blk[1], start=1):
                 par = doc.add_paragraph(style=BODY_STYLE)
                 par.paragraph_format.left_indent = Cm(0.74)
                 par.paragraph_format.first_line_indent = Cm(-0.37)
-                add_runs(par, item)
+                text = re.sub(r"^\s*\d+\.\s*", "", item)
+                add_runs(par, f"{idx}. {text}")
 
         elif kind == "quote":
             par = doc.add_paragraph(style=BODY_STYLE)
@@ -780,6 +796,7 @@ def main():
     parser.add_argument("--author", default="")
     parser.add_argument("--checker", default="待定")
     parser.add_argument("--reviewer", default="待定")
+    parser.add_argument("--approver", default="待定")
     parser.add_argument("--doc-number", dest="doc_number", default="")
     parser.add_argument("--version", default="A0")
     parser.add_argument("--revision-note", dest="revision_note", default="1 期方案初版")
