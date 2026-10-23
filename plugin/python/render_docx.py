@@ -429,7 +429,6 @@ def add_caption(doc, kind, number, text, bookmark):
     paragraph.paragraph_format.keep_together = True
     if kind == "表":
         paragraph.paragraph_format.keep_with_next = True
-
     add_bookmark(paragraph, bookmark)
 
 
@@ -468,16 +467,6 @@ def fill_static_toc(doc, headings, figures, tables):
             idx += 1
             continue
         break
-
-    # 正文目录放在图目录之前
-    main_heading = doc.add_paragraph("目  录")
-    main_heading.style = fig_heading.style
-    main_heading.alignment = fig_heading.alignment
-    main_heading.paragraph_format.page_break_before = True
-    fig_heading._p.addprevious(main_heading._p)
-    for item in reversed(headings):
-        entry = add_toc_entry(doc, main_heading, item["text"], item["bookmark"])
-        entry.paragraph_format.left_indent = Cm(0.75 * (item["level"] - 1))
 
     for caption in reversed(figures):
         add_toc_entry(doc, fig_heading, f"图 {caption['number']} {caption['text']}".strip(), caption["bookmark"])
@@ -645,10 +634,8 @@ def build(args):
                 continue  # 文档标题已在封面体现
             nlevel = {2: 1, 3: 2, 4: 3}.get(level, 3)
             clean = LINK_RE.sub(lambda m: m.group(1), text).replace("`", "").replace("**", "")
+            clean = re.sub(r"^\s*\d+(?:\.\d+)*\s*", "", clean)
             h = doc.add_heading(clean, level=nlevel)
-            # 章号沿用源文件（镜像不改写），同时取消样式自带的多级编号，
-            # 否则会出现“1.9 系统边界”这类与源文件不一致的自动编号。
-            cancel_numbering(h)
             # 标题不与正文分页：章/节标题不落在页末
             h.paragraph_format.keep_with_next = True
             h.paragraph_format.keep_together = True
