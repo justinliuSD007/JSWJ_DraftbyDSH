@@ -947,7 +947,7 @@ window.__ModuleLoader__.load({
                   h("label", { style: s.label }, "层级"),
                   h(
                     "select",
-                    { style: s.input, value: form.attrs.tier || "T2 子系统级", onChange: setAttrs("tier") },
+                    { style: s.input, value: form.attrs.tier || "T0 飞机级", onChange: setAttrs("tier") },
                     ["T0 飞机级", "T1 系统级", "T2 子系统级", "T3 设备级", "T4 软硬件级", "T5 零件级"].map((v) => h("option", { key: v }, v)),
                   ),
                 ),

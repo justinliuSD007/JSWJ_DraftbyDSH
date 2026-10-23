@@ -199,7 +199,7 @@ export async function createTask(flow) {
     updatedAt: stamp(),
     data: {
       basic: { name: "", type: flow === "review" ? "需求规范" : "需求规范", classification: "L2 重要/秘密", number: "" },
-      attrs: { tier: "T2 子系统级", board: "总体", archive: "feishu", project: "" },
+      attrs: { tier: "T0 飞机级", board: "总体", archive: "feishu", project: "" },
       sources: [],
       outline: { chapters: [], confirmed: false },
       generation: { status: "idle", note: "" },

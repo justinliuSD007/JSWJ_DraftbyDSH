@@ -172,6 +172,13 @@ def add_table(doc, rows):
     header, body = cells[0], cells[2:]
     ncols = len(header)
 
+    # 密度自适应：内容多的表格适当缩小字号与行距，尽量整表落在一页内。
+    body_chars = sum(len("".join(r)) for r in body)
+    if body_chars >= 1100:
+        fs, pad = 8.5, 0.5
+    else:
+        fs, pad = 9.0, 1.0
+
     table = doc.add_table(rows=1 + len(body), cols=ncols)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -184,9 +191,10 @@ def add_table(doc, rows):
         cell = table.rows[0].cells[c]
         cell.text = ""
         par = cell.paragraphs[0]
+        par.paragraph_format.line_spacing = 1.0
         par.paragraph_format.space_before = Pt(2)
         par.paragraph_format.space_after = Pt(2)
-        add_runs(par, text, base_bold=True, size=Pt(9))
+        add_runs(par, text, base_bold=True, size=Pt(fs))
         shade(cell)
 
     for row_obj in table.rows:
@@ -198,9 +206,10 @@ def add_table(doc, rows):
             cell = table.rows[r].cells[c]
             cell.text = ""
             par = cell.paragraphs[0]
-            par.paragraph_format.space_before = Pt(1)
-            par.paragraph_format.space_after = Pt(1)
-            add_runs(par, text, size=Pt(9))
+            par.paragraph_format.line_spacing = 1.0
+            par.paragraph_format.space_before = Pt(pad)
+            par.paragraph_format.space_after = Pt(pad)
+            add_runs(par, text, size=Pt(fs))
 
     def weight(s):
         return sum(2 if ord(ch) > 127 else 1 for ch in s)
@@ -222,6 +231,18 @@ def add_table(doc, rows):
     for row in table.rows:
         for idx, cell in enumerate(row.cells):
             cell.width = Cm(widths[idx])
+
+    # 整表尽量落在同一页：除末行外，各单元格段落设“与下段同页”，
+    # Word 会把放得下的表格整体移到下一页，避免被换页截断。
+    rows_list = list(table.rows)
+    for row_obj in rows_list[:-1]:
+        for cell in row_obj.cells:
+            for par in cell.paragraphs:
+                par.paragraph_format.keep_with_next = True
+    if rows_list:
+        for cell in rows_list[-1].cells:
+            for par in cell.paragraphs:
+                par.paragraph_format.keep_together = True
 
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
 
@@ -436,6 +457,12 @@ def build(args):
             pPr.append(shd)
 
         elif kind == "table":
+            # 表题与被表题说明的表格同页
+            if doc.paragraphs:
+                cap = doc.paragraphs[-1]
+                if cap.text.strip().startswith("表"):
+                    cap.paragraph_format.keep_with_next = True
+                    cap.paragraph_format.keep_together = True
             add_table(doc, blk[1])
 
         elif kind == "img":
