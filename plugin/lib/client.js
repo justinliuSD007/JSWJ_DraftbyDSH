@@ -523,7 +523,11 @@ window.__ModuleLoader__.load({
         autoPreviewRef.current = key;
         call("draft.preview", { id: task.id, markdown: draft.markdown, version: draft.version || 1 })
           .then(() => call("tasks.get", { id: task.id }))
-          .then((fresh) => setTask(fresh))
+          .then((fresh) =>
+            setTask((current) =>
+              current && current.id === fresh.id && Number(current.step) === Number(fresh.step) ? fresh : current,
+            ),
+          )
           .catch((err) => setError("自动生成预览稿失败：" + String((err && err.message) || err)));
       }, [
         task && task.id,
