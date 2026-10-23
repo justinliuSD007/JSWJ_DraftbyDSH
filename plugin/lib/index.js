@@ -611,7 +611,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const number = String(task.data.basic?.number || "").trim();
         const fileName = `${number ? `${number}-` : ""}${baseName}.docx`;
 
-        const outRoot = await ensureWikiChild(cfg, cfg.rootToken || "", "出稿库");
+        const outRoot = await ensureWikiChild(cfg, cfg.rootToken || "", "技术资料出稿库");
         const archive = String(task.data.attrs?.archive || "feishu");
         let targetNode;
         let outPath;
@@ -619,14 +619,14 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           const polarionNode = await ensureWikiChild(cfg, outRoot, "Polarion");
           const project = String(task.data.attrs?.project || "未指定项目");
           targetNode = await ensureWikiChild(cfg, polarionNode, project);
-          outPath = `技术资料起草库 / 出稿库 / Polarion / ${project} /`;
+          outPath = `技术资料起草库 / 技术资料出稿库 / Polarion / ${project} /`;
         } else {
           const approvalNode = await ensureWikiChild(cfg, outRoot, "飞书审批");
           const tier = String(task.data.attrs?.tier || "未分级");
           const board = String(task.data.attrs?.board || "未分类");
           const tierNode = await ensureWikiChild(cfg, approvalNode, tier);
           targetNode = await ensureWikiChild(cfg, tierNode, board);
-          outPath = `技术资料起草库 / 出稿库 / 飞书审批 / ${tier} / ${board} /`;
+          outPath = `技术资料起草库 / 技术资料出稿库 / 飞书审批 / ${tier} / ${board} /`;
         }
 
         const oldToken = draft.nodeToken || (draft.url ? String(draft.url).split("/").filter(Boolean).pop() : "");
@@ -1393,7 +1393,7 @@ function apply(ctx, config = {}) {
     defineTool({
       name: "jswj_wiki_list",
       description:
-        "列出飞书知识库某个节点下的直接子节点（标题、token、类型、是否有子节点）。用于确认起草库、模板库、出稿库的落位路径。parent 省略时使用配置的 rootToken。",
+        "列出飞书知识库某个节点下的直接子节点（标题、token、类型、是否有子节点）。用于确认起草库、模板库、技术资料出稿库的落位路径。parent 省略时使用配置的 rootToken。",
       parameters: {
         parent: { type: "string", description: "父节点 token 或 wiki 链接；省略则用配置中的 rootToken" },
       },

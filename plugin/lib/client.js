@@ -935,8 +935,8 @@ window.__ModuleLoader__.load({
             const path = `技术资料起草库 / 技术资料草稿库 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} / ${form.basic.type || "-"} /`;
             const outPath =
               form.attrs.archive === "polarion"
-                ? `技术资料起草库 / 出稿库 / Polarion / ${form.attrs.project || "-"} /`
-                : `技术资料起草库 / 出稿库 / 飞书审批 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} /`;
+                ? `技术资料起草库 / 技术资料出稿库 / Polarion / ${form.attrs.project || "-"} /`
+                : `技术资料起草库 / 技术资料出稿库 / 飞书审批 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} /`;
             return h(
               "div",
               null,
@@ -956,7 +956,7 @@ window.__ModuleLoader__.load({
                   h(
                     "select",
                     { style: s.input, value: form.attrs.board || "总体", onChange: setAttrs("board") },
-                    ["总体", "电子", "试验试飞", "动力"].map((v) => h("option", { key: v }, v)),
+                    ["总体", "电子", "动力", "试验试飞"].map((v) => h("option", { key: v }, v)),
                   ),
                 ),
                 h("div", { style: s.field },
@@ -1673,7 +1673,7 @@ window.__ModuleLoader__.load({
             h(
               "div",
               { style: s.note },
-              `目标目录：技术资料起草库 / 出稿库 / ${
+              `目标目录：技术资料起草库 / 技术资料出稿库 / ${
                 form.attrs.archive === "polarion"
                   ? `Polarion / ${form.attrs.project || "-"} /`
                   : `飞书审批 / ${form.attrs.tier || "-"} / ${form.attrs.board || "-"} /`
@@ -1984,7 +1984,7 @@ window.__ModuleLoader__.load({
               ),
             ),
           ),
-          h("div", { style: s.note }, "存档目录：技术资料起草库 / 出稿库 / 预审 / {评审类型} / {任务号} /。协助修订只按意见逐条改，不整体润色、不补写整节。"),
+          h("div", { style: s.note }, "存档目录：技术资料起草库 / 技术资料出稿库 / 预审 / {评审类型} / {任务号} /。协助修订只按意见逐条改，不整体润色、不补写整节。"),
           form.publish?.url
             ? h("div", { style: s.note }, "已存档：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
             : null,
