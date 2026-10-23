@@ -628,8 +628,8 @@ def build(args):
             chapter_match = re.match(r"\s*(\d+)", clean)
             if nlevel == 1 and chapter_match:
                 current_chapter = chapter_match.group(1)
-            clean = re.sub(r"^\s*\d+(?:\.\d+)*\s*", "", clean)
             h = doc.add_heading(clean, level=nlevel)
+            cancel_numbering(h)
             # 标题不与正文分页：章/节标题不落在页末
             h.paragraph_format.keep_with_next = True
             h.paragraph_format.keep_together = True
