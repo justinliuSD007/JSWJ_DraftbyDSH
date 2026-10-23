@@ -618,6 +618,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           approver: task.data.basic?.approver || "",
           version: task.data.basic?.version || "A0",
           revisions: task.data.basic?.revisions || [],
+          signers: task.data.basic?.signers || [],
         };
         if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
         const render = await tool("jswj_render_docx").execute(renderArgs, {});
@@ -678,6 +679,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             approver: task.data.basic?.approver || "",
             version: task.data.basic?.version || "A0",
             revisions: task.data.basic?.revisions || [],
+            signers: task.data.basic?.signers || [],
           };
           if (task.data.basic?.classification) renderArgs.classification = task.data.basic.classification;
           const render = await tool("jswj_render_docx").execute(renderArgs, {});
@@ -1760,6 +1762,7 @@ function apply(ctx, config = {}) {
           "--version", args.version ?? "A0",
           "--revision-note", args.revisionNote ?? "1 期方案初版",
           "--revisions", JSON.stringify(args.revisions ?? []),
+          "--signers", JSON.stringify(args.signers ?? []),
           "--date", args.date ?? new Date().toLocaleDateString("zh-CN").replace(/\//g, "."),
         ];
 

@@ -312,6 +312,8 @@ def add_table(doc, rows):
             cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
             add_runs(par, text, color=RGBColor(0x00, 0x00, 0x00))
 
+    merge_group_columns(table)
+
     def weight(s):
         return sum(2 if ord(ch) > 127 else 1 for ch in s)
 
@@ -377,6 +379,54 @@ def add_table(doc, rows):
         for cell in rows_list[-1].cells:
             for par in cell.paragraphs:
                 par.paragraph_format.keep_together = True
+
+
+GROUP_HEADERS = {"序号", "系统功能", "研制阶段", "阶段", "过程", "类型", "类别"}
+
+
+def merge_group_columns(table):
+    """按分组列纵向合并：序号/系统功能/研制阶段/过程等相同值或空续行合并。"""
+    rows = list(table.rows)
+    if len(rows) < 3:
+        return
+    ncols = len(table.columns)
+    texts = [[table.cell(r, c).text.strip() for c in range(ncols)] for r in range(len(rows))]
+    headers = [re.sub(r"[*`]", "", text).strip() for text in texts[0]]
+
+    for c in range(ncols - 1, -1, -1):
+        if headers[c] not in GROUP_HEADERS:
+            continue
+        groups = []
+        current = None
+        start = 1
+        for r in range(1, len(rows)):
+            value = texts[r][c]
+            if value:
+                if current is None:
+                    current = value
+                    start = r
+                elif value != current:
+                    groups.append((start, r - 1, current))
+                    current = value
+                    start = r
+        if current is not None:
+            groups.append((start, len(rows) - 1, current))
+        for start_row, end_row, value in reversed(groups):
+            if end_row <= start_row:
+                continue
+            merged = table.cell(start_row, c).merge(table.cell(end_row, c))
+            for paragraph in merged.paragraphs[1:]:
+                paragraph._element.getparent().remove(paragraph._element)
+            paragraph = merged.paragraphs[0]
+            for run in list(paragraph.runs):
+                run.text = ""
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.paragraph_format.space_after = Pt(0)
+            run = paragraph.add_run(value)
+            run.font.name = "宋体"
+            run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+            run.font.size = Pt(10.5)
 
 
 def add_field(paragraph, instruction, result_text="—"):
@@ -579,6 +629,33 @@ def fill_cover(doc, meta):
                     par.add_run(meta[label])
 
 
+def fill_signers(doc, signers):
+    """按任务提供的会签名单重建封面会签表；每行 4 个单元格。"""
+    if not signers:
+        return
+    for table in doc.tables:
+        if not table.rows or table.rows[0].cells[0].text.strip() != "会签部门":
+            continue
+        for row in list(table.rows)[1:]:
+            row._element.getparent().remove(row._element)
+        for values in signers:
+            row = table.add_row()
+            for c in range(4):
+                cell = row.cells[c]
+                cell.text = ""
+                par = cell.paragraphs[0]
+                par.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                par.paragraph_format.space_before = Pt(0)
+                par.paragraph_format.space_after = Pt(0)
+                par.paragraph_format.line_spacing = 1.0
+                run = par.add_run(str(values[c]) if c < len(values) else "")
+                run.font.name = "宋体"
+                run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+                run.font.size = Pt(10.5)
+                cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        break
+
+
 def fill_revision(doc, args):
     revisions = getattr(args, "revisions", None) or []
     if not revisions:
@@ -661,6 +738,7 @@ def build(args):
 
     fill_cover(doc, meta)
     fill_headers(doc, args.doc_number)
+    fill_signers(doc, getattr(args, "signers", None) or [])
     fill_revision(doc, args)
 
     started = False
@@ -820,12 +898,17 @@ def main():
     parser.add_argument("--version", default="A0")
     parser.add_argument("--revision-note", dest="revision_note", default="1 期方案初版")
     parser.add_argument("--revisions", default="[]")
+    parser.add_argument("--signers", default="[]")
     parser.add_argument("--date", default="")
     args = parser.parse_args()
     try:
         args.revisions = json.loads(args.revisions) if args.revisions else []
     except Exception:
         args.revisions = []
+    try:
+        args.signers = json.loads(args.signers) if args.signers else []
+    except Exception:
+        args.signers = []
     if not args.date:
         from datetime import date
 
