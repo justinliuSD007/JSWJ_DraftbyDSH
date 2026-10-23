@@ -366,7 +366,7 @@ def add_table(doc, rows):
                 par.paragraph_format.keep_together = True
 
 
-def add_field(paragraph, instruction):
+def add_field(paragraph, instruction, result_text="—"):
     def run_with(child):
         run = OxmlElement("w:r")
         run.append(child)
@@ -386,7 +386,7 @@ def add_field(paragraph, instruction):
     run_with(separate)
 
     result = OxmlElement("w:t")
-    result.text = "—"
+    result.text = str(result_text)
     run_with(result)
 
     end = OxmlElement("w:fldChar")
@@ -409,27 +409,17 @@ def add_bookmark(paragraph, name):
     paragraph._p.append(end)
 
 
-def add_caption(doc, kind, number, text, bookmark):
-    """图/表题：按源编号原样写入，并加书签供图目录/表目录取页码。"""
-    style_name = "图题注" if kind == "图" else "表题注"
-    if style_name not in doc.styles:
-        try:
-            from docx.enum.style import WD_STYLE_TYPE
-
-            style = doc.styles.add_style(style_name, WD_STYLE_TYPE.PARAGRAPH)
-            style.base_style = doc.styles["Caption"]
-        except Exception:
-            style_name = "Caption"
-    label = " ".join(x for x in (kind, number) if x)
-    paragraph = doc.add_paragraph(style=style_name)
+def add_caption(doc, kind, number, text, bookmark, chapter):
+    """图/表题：题注样式 + SEQ 域；章号用正文标题号，供模板图目录/表目录汇总。"""
+    paragraph = doc.add_paragraph(style="Caption")
+    paragraph.add_run(f"{kind} {chapter}-")
+    seq = str(number).split("-")[-1] if number else "1"
+    add_field(paragraph, f"SEQ {kind} \\* ARABIC \\s 1", result_text=seq)
     if text:
-        paragraph.add_run(f"{label} {text}")
-    else:
-        paragraph.add_run(label)
+        paragraph.add_run(f" {text}")
     paragraph.paragraph_format.keep_together = True
     if kind == "表":
         paragraph.paragraph_format.keep_with_next = True
-    add_bookmark(paragraph, bookmark)
 
 
 def add_toc_entry(doc, heading, text, bookmark):
@@ -625,6 +615,7 @@ def build(args):
     figures = []
     tables = []
     caption_seq = 0
+    current_chapter = "1"
     for bi, blk in enumerate(blocks):
         kind = blk[0]
 
@@ -634,6 +625,9 @@ def build(args):
                 continue  # 文档标题已在封面体现
             nlevel = {2: 1, 3: 2, 4: 3}.get(level, 3)
             clean = LINK_RE.sub(lambda m: m.group(1), text).replace("`", "").replace("**", "")
+            chapter_match = re.match(r"\s*(\d+)", clean)
+            if nlevel == 1 and chapter_match:
+                current_chapter = chapter_match.group(1)
             clean = re.sub(r"^\s*\d+(?:\.\d+)*\s*", "", clean)
             h = doc.add_heading(clean, level=nlevel)
             # 标题不与正文分页：章/节标题不落在页末
@@ -699,7 +693,7 @@ def build(args):
         elif kind == "caption":
             caption_seq += 1
             bookmark = f"_JswjCap{caption_seq}"
-            add_caption(doc, blk[1], blk[2], blk[3], bookmark)
+            add_caption(doc, blk[1], blk[2], blk[3], bookmark, current_chapter)
             entry = {"number": blk[2], "text": blk[3], "bookmark": bookmark}
             if blk[1] == "图":
                 figures.append(entry)
@@ -734,7 +728,7 @@ def build(args):
             else:
                 print(f"warning: missing image {path}", file=sys.stderr)
 
-    fill_static_toc(doc, headings, figures, tables)
+    # fill_static_toc(doc, headings, figures, tables)
 
     settings = doc.settings.element
     for el in settings.findall(qn("w:updateFields")):
