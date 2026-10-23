@@ -312,8 +312,6 @@ def add_table(doc, rows):
             cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
             add_runs(par, text, color=RGBColor(0x00, 0x00, 0x00))
 
-    merge_group_columns(table)
-
     def weight(s):
         return sum(2 if ord(ch) > 127 else 1 for ch in s)
 
@@ -321,8 +319,12 @@ def add_table(doc, rows):
     min_widths = []
     for c in range(ncols):
         texts = [header[c]] + [r[c] if c < len(r) else "" for r in body]
-        longest = max(weight(t) for t in texts)
-        weights.append(min(max(longest, 10), 45))
+        lengths = [weight(t) for t in texts]
+        longest = max(lengths)
+        average = sum(lengths) / len(lengths)
+        # 同时看最长单元格和整列平均篇幅：长段落多的列要真正拿到宽度，
+        # 只出现一次的长值不能把整列撑死。
+        weights.append(min(90, max(10, 0.4 * longest + 0.6 * average)))
         # 列宽下限按“最长不可断词”（英文单词/编号）估算，避免 Integration 这类
         # 单词被逐字母折断；中文列至少留出约 2 cm 的版面。
         token = 1
@@ -331,13 +333,27 @@ def add_table(doc, rows):
                 token = max(token, len(word))
         # 表头必须尽量一行放得下，不能出现“时间进度安/排”这种拆字换行。
         header_min = min(2600, int(weight(header[c]) * 0.19 * 567) + 220)
-        min_widths.append(max(1100, header_min, int(token * 0.19 * 567) + 220))
+        # 长段落列不能只靠权重分，给最长单元格一个宽度下限，避免整列被压成细条。
+        content_min = min(3000, int(longest * 0.19 * 567) + 220)
+        min_widths.append(max(1100, header_min, content_min, int(token * 0.19 * 567) + 220))
 
     total_dxa = TBL_W_DXA
     if sum(min_widths) >= total_dxa:
-        # 最小宽度本身已超版面：按最小宽度等比压缩
-        k = total_dxa / sum(min_widths)
-        widths_dxa = [m * k for m in min_widths]
+        # 多列同时需要较大宽度时，不能按最小宽度等比压缩成一样宽；
+        # 改按内容权重分，再保证每列有一个可读下限。
+        share = sum(weights) or 1
+        widths = [max(1000.0, total_dxa * w / share) for w in weights]
+        excess = sum(widths) - total_dxa
+        for idx in sorted(range(ncols), key=lambda i: widths[i], reverse=True):
+            if excess <= 0:
+                break
+            cut = min(excess, widths[idx] - 1000.0)
+            if cut > 0:
+                widths[idx] -= cut
+                excess -= cut
+        if excess > 0:
+            widths = [w * total_dxa / sum(widths) for w in widths]
+        widths_dxa = widths
     else:
         # 迭代分配：先冻结放不下最小宽度的列，剩余宽度按权重分给其余列
         widths = [0.0] * ncols
@@ -379,6 +395,8 @@ def add_table(doc, rows):
         for cell in rows_list[-1].cells:
             for par in cell.paragraphs:
                 par.paragraph_format.keep_together = True
+
+    merge_group_columns(table)
 
 
 GROUP_HEADERS = {"序号", "系统功能", "研制阶段", "阶段", "过程", "类型", "类别"}
