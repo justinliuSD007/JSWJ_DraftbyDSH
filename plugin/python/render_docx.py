@@ -268,7 +268,10 @@ def merge_header_cells(table, header_count):
                 c += 1
                 continue
             end = c
+            parent = table.cell(r - 1, c)._tc if r > 0 else None
             while end + 1 < ncols and not table.cell(r, end + 1).text.strip():
+                if parent is not None and table.cell(r - 1, end + 1)._tc is not parent:
+                    break
                 end += 1
             if end > c:
                 table.cell(r, c).merge(table.cell(r, end))
