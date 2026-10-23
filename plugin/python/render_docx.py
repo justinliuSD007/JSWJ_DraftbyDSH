@@ -880,8 +880,11 @@ def build(args):
         elif kind == "ul":
             for item in blk[1]:
                 par = doc.add_paragraph(style=BODY_STYLE)
-                par.paragraph_format.left_indent = Cm(0.74)
-                par.paragraph_format.first_line_indent = Cm(-0.37)
+                par.paragraph_format.left_indent = Cm(0.35)
+                par.paragraph_format.first_line_indent = Pt(1)
+                ind = par._p.get_or_add_pPr().find(qn("w:ind"))
+                if ind is not None:
+                    ind.set(qn("w:firstLineChars"), "0")
                 add_runs(par, "· " + item)
 
         elif kind == "ol":
