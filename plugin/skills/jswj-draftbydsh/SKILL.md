@@ -54,11 +54,12 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 
 参考资料参考程度看 `sources[].mode`：
 
+- `mirror` 套用模板：章节结构、正文内容、表格与图片全部按参考资料原样保留，不做内容改写，只按 GY-F003 排版。
 - `template` 直接套用：沿用章节结构、行文语气、表格与内嵌图片，只按本次主题改写内容。
 - `structure` 参考结构：沿用章节与写法，正文重写。
 - `background` 背景资料：只取事实、数据与约束，重新起草，不照搬结构。
 
-上传 docx 的内嵌图片已抽到 `sources[].images`（本地绝对路径）；`template` 模式可直接在 Markdown 中引用这些图片，`structure` / `background` 模式不要直接套用图片。
+上传 docx 的内嵌图片已抽到 `sources[].images`（本地绝对路径）；`mirror` / `template` 模式可直接在 Markdown 中引用这些图片，`structure` / `background` 模式不要直接套用图片。
 
 生成：逐章生成正文后，在同一回合内自动自检并修订到没有严重项，再把 `generation.status=done`、成稿正文 `draft.markdown`、`draft.ready=true`、`draft.version` 写回任务。不要让用户逐步确认自检与修订。
 

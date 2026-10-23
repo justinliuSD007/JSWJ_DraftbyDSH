@@ -452,6 +452,7 @@ window.__ModuleLoader__.load({
     function promptFor(task, step, extra) {
       const names = stepsOf(task.flow);
       const modeLabels = {
+        mirror: "套用模板：章节结构、正文内容、表格与图片均按参考资料原样保留，不做内容改写，只按 GY-F003 排版",
         template: "直接套用：沿用章节结构、行文语气、表格与图片，只按本次主题改写内容",
         structure: "参考结构：沿用章节与写法，正文重写",
         background: "背景资料：只取事实、数据与约束，重新起草，不照搬结构",
@@ -1051,6 +1052,7 @@ window.__ModuleLoader__.load({
             };
             const okCount = form.sources.filter((x) => x.ok).length;
             const SOURCE_MODES = [
+              ["mirror", "套用模板（原样内容，不改写）"],
               ["template", "直接套用（结构 / 行文 / 图片）"],
               ["structure", "参考结构（正文重写）"],
               ["background", "背景资料（重新起草）"],
@@ -1125,7 +1127,7 @@ window.__ModuleLoader__.load({
                       ),
                     ),
               ),
-              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：直接套用（结构/行文/图片）、参考结构（正文重写）、背景资料（重新起草）。"),
+              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：套用模板（原样内容，不改写）、直接套用（结构/行文/图片）、参考结构（正文重写）、背景资料（重新起草）。"),
               h(
                 "div",
                 { style: s.footer },
