@@ -569,11 +569,17 @@ def add_bookmark(paragraph, name):
 
 
 def add_caption(doc, kind, number, text, bookmark, chapter):
-    """图/表题：题注样式 + SEQ 域；章号用正文标题号，供模板图目录/表目录汇总。"""
+    """图/表题：题注样式 + SEQ 域；章号用正文标题号，附录编号沿用源编号。"""
     paragraph = doc.add_paragraph(style="Caption")
-    paragraph.add_run(f"{kind} {chapter}-")
-    seq = str(number).split("-")[-1] if number else "1"
-    add_field(paragraph, f"SEQ {kind} \\* ARABIC \\s 1", result_text=seq)
+    number_text = str(number or "").strip()
+    if "-" in number_text:
+        paragraph.add_run(f"{kind} {chapter}-")
+        seq = number_text.split("-")[-1]
+    else:
+        paragraph.add_run(f"{kind} ")
+        seq = number_text or "1"
+    seq_num = re.sub(r"\D", "", str(seq)) or "1"
+    add_field(paragraph, f"SEQ {kind} \\* ARABIC \\r {seq_num}", result_text=seq)
     if text:
         paragraph.add_run(f" {text}")
     paragraph.paragraph_format.keep_together = True
