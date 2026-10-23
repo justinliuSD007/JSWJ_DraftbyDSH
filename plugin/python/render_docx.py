@@ -650,37 +650,13 @@ def trim_front_matter(doc):
     if fig is None or body_start is None:
         raise RuntimeError(f"模板结构不符：未找到『图目录』或『概述』(fig={fig}, body_start={body_start})")
 
-    first_sect = None
-    for ch in children:
-        if ch.tag != qn("w:p"):
-            continue
-        pPr = ch.find(qn("w:pPr"))
-        if pPr is not None and pPr.find(qn("w:sectPr")) is not None:
-            first_sect = pPr.find(qn("w:sectPr"))
-            break
-
     targets = children[body_start:]
     for ch in targets:
         if ch.tag == qn("w:sectPr"):
             continue
         body.remove(ch)
 
-    for para in list(body.iter(qn("w:p"))):
-        pPr = para.find(qn("w:pPr"))
-        if pPr is None:
-            continue
-        sp = pPr.find(qn("w:sectPr"))
-        if sp is None:
-            continue
-        pPr.remove(sp)
-        if pPr.find(qn("w:pageBreakBefore")) is None:
-            pPr.insert(0, OxmlElement("w:pageBreakBefore"))
-
-    final = body.find(qn("w:sectPr"))
-    if final is not None and first_sect is not None:
-        new_sect = copy.deepcopy(first_sect)
-        body.replace(final, new_sect)
-
+    # 保留模板原有分节：封面、修订页、目录（罗马页码）、正文（阿拉伯页码）。
     return len(targets)
 
 
