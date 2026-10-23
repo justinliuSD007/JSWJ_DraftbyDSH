@@ -407,12 +407,13 @@ def add_table(doc, rows):
         # 多列同时需要较大宽度时，不能按最小宽度等比压缩成一样宽；
         # 改按内容权重分，再保证每列有一个可读下限。
         share = sum(weights) or 1
-        widths = [max(1000.0, total_dxa * w / share) for w in weights]
+        floor = min(1000.0, max(480.0, total_dxa / ncols * 0.65))
+        widths = [max(floor, total_dxa * w / share) for w in weights]
         excess = sum(widths) - total_dxa
         for idx in sorted(range(ncols), key=lambda i: widths[i], reverse=True):
             if excess <= 0:
                 break
-            cut = min(excess, widths[idx] - 1000.0)
+            cut = min(excess, widths[idx] - floor)
             if cut > 0:
                 widths[idx] -= cut
                 excess -= cut
