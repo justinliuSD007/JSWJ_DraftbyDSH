@@ -452,7 +452,7 @@ window.__ModuleLoader__.load({
     function promptFor(task, step, extra) {
       const names = stepsOf(task.flow);
       const modeLabels = {
-        mirror: "套用模板：章节结构、正文内容、表格与图片均按参考资料原样保留，不做内容改写，只按 GY-F003 排版",
+        mirror: "统一套用模板：章节结构、正文内容、表格与图片均按参考资料原样保留，不做内容改写，只按 GY-F003 排版",
         template: "直接套用：沿用章节结构、行文语气、表格与图片，只按本次主题改写内容",
         structure: "参考结构：沿用章节与写法，正文重写",
         background: "背景资料：只取事实、数据与约束，重新起草，不照搬结构",
@@ -1052,7 +1052,7 @@ window.__ModuleLoader__.load({
             };
             const okCount = form.sources.filter((x) => x.ok).length;
             const SOURCE_MODES = [
-              ["mirror", "套用模板（原样内容，不改写）"],
+              ["mirror", "统一套用模板（原样内容，不改写）"],
               ["template", "直接套用（结构 / 行文 / 图片）"],
               ["structure", "参考结构（正文重写）"],
               ["background", "背景资料（重新起草）"],
@@ -1127,7 +1127,7 @@ window.__ModuleLoader__.load({
                       ),
                     ),
               ),
-              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：套用模板（原样内容，不改写）、直接套用（结构/行文/图片）、参考结构（正文重写）、背景资料（重新起草）。"),
+              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：统一套用模板（原样内容，不改写）、直接套用（结构/行文/图片）、参考结构（正文重写）、背景资料（重新起草）。"),
               h(
                 "div",
                 { style: s.footer },
@@ -1247,6 +1247,7 @@ window.__ModuleLoader__.load({
 
           if (step === 5) {
             const gen = form.generation || {};
+            const hasMirror = (form.sources || []).some((item) => item.mode === "mirror");
             const selfcheck = form.selfcheck || {};
             const revision = form.revision || { round: 1, items: [], confirmed: false };
             const items = revision.items || [];
@@ -1351,7 +1352,13 @@ window.__ModuleLoader__.load({
                           h("a", { style: s.link, href: gen.previewUrl, target: "_blank", rel: "noreferrer" }, gen.previewUrl),
                         )
                       : null,
-                    h("div", { style: s.note }, "点「交给助手生成」会新建会话：助手逐章生成后自动自检并修订到无严重项，再把 generation.status=done 与成稿正文 draft.markdown 写回任务；回到本页刷新即可进入成稿确认。"),
+                    h(
+                      "div",
+                      { style: s.note },
+                      hasMirror
+                        ? "本次任务含「统一套用模板」资料：点「套用模板生成」会跳过内容起草，直接以资料正文、章节结构、表格与图片为底稿，只按 GY-F003 排版，不改写、不扩写。"
+                        : "点「交给助手生成」会新建会话：助手逐章生成后自动自检并修订到无严重项，再把 generation.status=done 与成稿正文 draft.markdown 写回任务；回到本页刷新即可进入成稿确认。",
+                    ),
                   )
                 : step === 6
                   ? h(
@@ -1452,8 +1459,9 @@ window.__ModuleLoader__.load({
 
             const revisionExtra =
               "请读取 selfcheck.items 与本轮文档，汇总为 revision.items（severity / location / problem / action）并写回任务；不要直接改正文。";
-            const generationExtra =
-              "生成后自动自检并修订，直到没有严重项；再写回 generation.status=done、selfcheck.status=clean、revision.done=true，并把成稿正文写入 draft.markdown、draft.ready=true、draft.version 加 1。";
+            const generationExtra = hasMirror
+              ? "本次任务含统一套用模板资料：跳过内容起草，直接以该资料的章节结构、正文内容、表格与图片为底稿，整理为 GY-F003 章节 Markdown；不改写、不扩写、不补写，写回 generation.status=done、draft.markdown、draft.ready=true、draft.version 加 1。"
+              : "生成后自动自检并修订，直到没有严重项；再写回 generation.status=done、selfcheck.status=clean、revision.done=true，并把成稿正文写入 draft.markdown、draft.ready=true、draft.version 加 1。";
             const selfcheckItems = selfcheck.items || [];
             const selfcheckBlockers = selfcheckItems.filter((item) => item.severity === "严重");
             const selfcheckFinished = Boolean(selfcheck.status) && selfcheck.status !== "pending";
@@ -1491,7 +1499,9 @@ window.__ModuleLoader__.load({
                   sessionFor(step)
                     ? "打开本步会话"
                     : step === 5
-                      ? "交给助手生成"
+                      ? hasMirror
+                        ? "套用模板生成"
+                        : "交给助手生成"
                       : step === 6
                         ? "交给助手自检"
                         : "让助手汇总修订要点",
