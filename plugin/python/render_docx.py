@@ -446,8 +446,14 @@ def add_table(doc, rows):
     for idx, dxa in enumerate(widths_dxa):
         table.columns[idx].width = Emu(int(round(dxa * 635)))  # 1 dxa = 635 EMU
     for row in table.rows:
+        seen = set()
         for idx, cell in enumerate(row.cells):
-            cell.width = Emu(int(round(widths_dxa[idx] * 635)))
+            if id(cell._tc) in seen:
+                continue
+            seen.add(id(cell._tc))
+            span = grid_span(cell)
+            width = sum(widths_dxa[idx:idx + span])
+            cell.width = Emu(int(round(width * 635)))
 
     # 整表尽量落在同一页：放得下的小表把各行“与下段同页”串起来，Word 会把整表
     # 移到下一页，避免被换页截断；超过一页的大表不整表锁定（否则会把表题/引导句
