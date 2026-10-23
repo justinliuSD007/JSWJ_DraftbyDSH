@@ -22,7 +22,7 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Pt, RGBColor
@@ -273,6 +273,8 @@ def add_table(doc, rows):
         par.paragraph_format.left_indent = Cm(0)
         par.paragraph_format.space_before = Pt(0)
         par.paragraph_format.space_after = Pt(0)
+        par.paragraph_format.line_spacing = 1.0
+        par.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         add_runs(par, text, base_bold=True, color=RGBColor(0x00, 0x00, 0x00))
         shade(cell)
@@ -294,6 +296,8 @@ def add_table(doc, rows):
             par.paragraph_format.left_indent = Cm(0)
             par.paragraph_format.space_before = Pt(0)
             par.paragraph_format.space_after = Pt(0)
+            par.paragraph_format.line_spacing = 1.0
+            par.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
             cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
             add_runs(par, text, color=RGBColor(0x00, 0x00, 0x00))
 
@@ -301,16 +305,43 @@ def add_table(doc, rows):
         return sum(2 if ord(ch) > 127 else 1 for ch in s)
 
     weights = []
+    min_widths = []
     for c in range(ncols):
-        longest = max([weight(header[c])] + [weight(r[c]) if c < len(r) else 0 for r in body])
-        weights.append(max(longest, 8))
+        texts = [header[c]] + [r[c] if c < len(r) else "" for r in body]
+        longest = max(weight(t) for t in texts)
+        weights.append(min(max(longest, 10), 45))
+        # 列宽下限按“最长不可断词”（英文单词/编号）估算，避免 Integration 这类
+        # 单词被逐字母折断；中文列至少留出约 2 cm 的版面。
+        token = 1
+        for t in texts:
+            for word in re.findall(r"[A-Za-z0-9][A-Za-z0-9./+-]*", t):
+                token = max(token, len(word))
+        min_widths.append(max(1100, int(token * 0.19 * 567) + 220))
 
     total_dxa = TBL_W_DXA
-    min_dxa = 1021  # 1.8 cm：短列不占过多宽度，长文本列获得主要宽度
-    raw = [total_dxa * w / sum(weights) for w in weights]
-    raw = [max(x, min_dxa) for x in raw]
-    scale = total_dxa / sum(raw)
-    widths_dxa = [x * scale for x in raw]
+    if sum(min_widths) >= total_dxa:
+        # 最小宽度本身已超版面：按最小宽度等比压缩
+        k = total_dxa / sum(min_widths)
+        widths_dxa = [m * k for m in min_widths]
+    else:
+        # 迭代分配：先冻结放不下最小宽度的列，剩余宽度按权重分给其余列
+        widths = [0.0] * ncols
+        pending = set(range(ncols))
+        remaining = float(total_dxa)
+        while pending:
+            share_sum = sum(weights[c] for c in pending)
+            narrow = [c for c in pending if remaining * weights[c] / share_sum < min_widths[c]]
+            if not narrow:
+                break
+            for c in narrow:
+                widths[c] = min_widths[c]
+                remaining -= min_widths[c]
+                pending.discard(c)
+        if pending:
+            share_sum = sum(weights[c] for c in pending)
+            for c in pending:
+                widths[c] = remaining * weights[c] / share_sum
+        widths_dxa = widths
 
     for idx, dxa in enumerate(widths_dxa):
         table.columns[idx].width = Emu(int(round(dxa * 635)))  # 1 dxa = 635 EMU
@@ -318,10 +349,14 @@ def add_table(doc, rows):
         for idx, cell in enumerate(row.cells):
             cell.width = Emu(int(round(widths_dxa[idx] * 635)))
 
-    # 整表尽量落在同一页：除末行外，各单元格段落设“与下段同页”，
-    # Word 会把放得下的表格整体移到下一页，避免被换页截断。
+    # 整表尽量落在同一页：放得下的小表把各行“与下段同页”串起来，Word 会把整表
+    # 移到下一页，避免被换页截断；超过一页的大表不整表锁定（否则会把表题/引导句
+    # 甩在上一页页末），只把表头行与首行数据锁在一起，分页处 repeat 表头。
+    total_chars = sum(len("".join(r)) for r in body) + sum(len(x) for x in header)
     rows_list = list(table.rows)
-    for row_obj in rows_list[:-1]:
+    keep_whole = len(rows_list) <= 7 and total_chars <= 900
+    chain = rows_list[:-1] if keep_whole else rows_list[:1]
+    for row_obj in chain:
         for cell in row_obj.cells:
             for par in cell.paragraphs:
                 par.paragraph_format.keep_with_next = True
@@ -601,7 +636,7 @@ def build(args):
     figures = []
     tables = []
     caption_seq = 0
-    for blk in blocks:
+    for bi, blk in enumerate(blocks):
         kind = blk[0]
 
         if kind == "h":
@@ -685,10 +720,12 @@ def build(args):
                 tables.append(entry)
 
         elif kind == "table":
-            # 表题与被表题说明的表格同页
+            # 表题、以及紧贴表格的引导句（如“……见下表。”）都要与表格同页，
+            # 避免引导句单独留在上一页页末。
             if doc.paragraphs:
                 cap = doc.paragraphs[-1]
-                if cap.text.strip().startswith("表"):
+                lead = cap.text.strip()
+                if lead.startswith("表") or (len(lead) <= 60 and "表" in lead):
                     cap.paragraph_format.keep_with_next = True
                     cap.paragraph_format.keep_together = True
             add_table(doc, blk[1])
@@ -701,9 +738,12 @@ def build(args):
             if path.exists():
                 par = doc.add_paragraph(style=IMG_STYLE)
                 par.add_run().add_picture(str(path), width=Cm(blk[2]))
-                # 图片与图题同页，不被换页截断
-                par.paragraph_format.keep_with_next = True
                 par.paragraph_format.keep_together = True
+                # 只有紧跟图题时才“与下段同页”，避免图片和后续正文/表格绑成一块，
+                # 把插图顶到单独一页（留出整页空白）。
+                nxt = blocks[bi + 1][0] if bi + 1 < len(blocks) else None
+                if nxt == "caption":
+                    par.paragraph_format.keep_with_next = True
             else:
                 print(f"warning: missing image {path}", file=sys.stderr)
 
