@@ -94,16 +94,17 @@ def parse(md):
         if re.match(r"^\d+\.\s", s):
             items = []
             while i < len(lines):
-                current = lines[i].strip()
-                if re.match(r"^\d+\.\s", current):
-                    items.append(current)
+                raw = lines[i].rstrip()
+                current = raw.strip()
+                if re.match(r"^(?:\d+\.|[a-zA-Z]\))\s*", current):
+                    items.append(raw)
                     i += 1
                     continue
                 if not current:
                     j = i
                     while j < len(lines) and not lines[j].strip():
                         j += 1
-                    if j < len(lines) and re.match(r"^\d+\.\s", lines[j].strip()):
+                    if j < len(lines) and re.match(r"^(?:\d+\.|[a-zA-Z]\))\s*", lines[j].strip()):
                         i = j
                         continue
                 break
@@ -812,6 +813,14 @@ def fill_revision(doc, args):
 # ------------------------------------------------------------------ build
 
 
+def alpha_label(n):
+    label = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        label = chr(97 + rem) + label
+    return f"{label})"
+
+
 def build(args):
     md_path = Path(args.md)
     out_path = Path(args.out)
@@ -894,12 +903,25 @@ def build(args):
                 add_runs(par, "· " + item)
 
         elif kind == "ol":
-            for idx, item in enumerate(blk[1], start=1):
+            top_no = 0
+            sub_no = 0
+            for item in blk[1]:
+                raw = str(item)
+                indent = len(raw) - len(raw.lstrip(" "))
+                level = 2 if indent >= 2 else 1
+                text = re.sub(r"^\s*(?:\d+\.|[a-zA-Z]\))\s*", "", raw)
                 par = doc.add_paragraph(style=BODY_STYLE)
-                par.paragraph_format.left_indent = Cm(0.74)
+                if level == 2:
+                    sub_no += 1
+                    label = f"{sub_no})"
+                    par.paragraph_format.left_indent = Cm(1.11)
+                else:
+                    top_no += 1
+                    sub_no = 0
+                    label = alpha_label(top_no)
+                    par.paragraph_format.left_indent = Cm(0.74)
                 par.paragraph_format.first_line_indent = Cm(-0.37)
-                text = re.sub(r"^\s*\d+\.\s*", "", item)
-                add_runs(par, f"{idx}. {text}")
+                add_runs(par, f"{label} {text}")
 
         elif kind == "quote":
             par = doc.add_paragraph(style=BODY_STYLE)
