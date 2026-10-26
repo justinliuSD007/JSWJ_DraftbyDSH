@@ -146,6 +146,89 @@ window.__ModuleLoader__.load({
       entryGroup: { border: `1px solid ${C.line}`, background: C.layer1, borderRadius: 12, padding: "14px 16px" },
       entryTitle: { fontSize: 12, color: C.sub, marginBottom: 10 },
       entryRow: { display: "flex", gap: 8, flexWrap: "wrap" },
+      hero: {
+        display: "flex",
+        gap: 20,
+        alignItems: "stretch",
+        flexWrap: "wrap",
+        border: `1px solid ${C.line}`,
+        background: C.layer1,
+        borderRadius: 14,
+        padding: "18px 20px",
+        margin: "0 0 14px",
+      },
+      heroKicker: { fontSize: 11.5, color: BRAND, fontWeight: 650, letterSpacing: "0.08em", marginBottom: 6 },
+      heroTitle: { fontSize: 17, fontWeight: 650, color: C.text, marginBottom: 6 },
+      heroText: { fontSize: 12.5, color: C.sub, lineHeight: 1.75, maxWidth: 620 },
+      heroSteps: { display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", marginLeft: "auto" },
+      heroStep: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.text },
+      heroNum: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        background: PRIMARY,
+        color: "#fff",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 11.5,
+        fontWeight: 650,
+      },
+      stats: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 14 },
+      statCard: { border: `1px solid ${C.line}`, background: C.layer1, borderRadius: 11, padding: "11px 14px" },
+      statValue: { fontSize: 20, fontWeight: 650, color: C.text, lineHeight: 1.2 },
+      statLabel: { fontSize: 12, color: C.sub, marginTop: 3 },
+      listToolbar: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        margin: "4px 0 2px",
+      },
+      filterRow: { display: "flex", gap: 6, flexWrap: "wrap" },
+      filterBtn: {
+        height: 28,
+        padding: "0 10px",
+        borderRadius: 14,
+        border: `1px solid ${C.line}`,
+        background: "transparent",
+        color: C.sub,
+        fontSize: 12,
+        fontFamily: "inherit",
+        cursor: "pointer",
+      },
+      filterBtnActive: { borderColor: PRIMARY, color: PRIMARY, background: "rgba(59,63,182,0.08)" },
+      search: {
+        height: 30,
+        minWidth: 220,
+        flex: "1 1 220px",
+        maxWidth: 320,
+        marginLeft: "auto",
+        padding: "0 10px",
+        borderRadius: 8,
+        border: `1px solid ${C.line}`,
+        background: "transparent",
+        color: C.text,
+        fontSize: 12.5,
+        fontFamily: "inherit",
+        outline: "none",
+      },
+      entryCard: { border: `1px solid ${C.line}`, background: C.layer1, borderRadius: 12, padding: "15px 16px" },
+      entryHead: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 },
+      entryTitle2: { fontSize: 13.5, fontWeight: 650, color: C.text },
+      entryTag: { fontSize: 10.5, color: BRAND, border: `1px solid ${C.line2}`, borderRadius: 9, padding: "1px 7px" },
+      entryDesc: { fontSize: 12, color: C.sub, lineHeight: 1.7, marginBottom: 11 },
+      entryHint: { fontSize: 11.5, color: C.sub, marginTop: 8 },
+      taskTop: { display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 6 },
+      taskStatus: { fontSize: 11, borderRadius: 9, padding: "2px 8px", whiteSpace: "nowrap", marginLeft: "auto" },
+      progressRow: { display: "flex", alignItems: "center", gap: 8, marginTop: 9 },
+      progressTrack: { flex: "1 1 auto", height: 5, borderRadius: 3, background: C.layer2, overflow: "hidden" },
+      progressFill: { height: "100%", borderRadius: 3, background: GRADIENT },
+      progressText: { fontSize: 11, color: C.sub, whiteSpace: "nowrap" },
+      taskNext: { fontSize: 12, color: C.sub, marginTop: 8, lineHeight: 1.6 },
+      taskActions: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 8 },
+      empty: { border: `1px dashed ${C.line2}`, borderRadius: 12, padding: "28px 20px", textAlign: "center", color: C.sub, marginTop: 12 },
+      help: { border: `1px solid ${C.line}`, background: C.layer1, borderRadius: 12, padding: "14px 16px", marginTop: 18, fontSize: 12.5, color: C.sub, lineHeight: 1.8 },
       envBar: {
         display: "flex",
         alignItems: "center",
@@ -487,6 +570,8 @@ window.__ModuleLoader__.load({
       const [notice, setNotice] = React.useState("");
       const [font, setFont] = React.useState({ loading: true });
       const [confirmId, setConfirmId] = React.useState("");
+      const [listFilter, setListFilter] = React.useState("all");
+      const [query, setQuery] = React.useState("");
       const [updateInfo, setUpdateInfo] = React.useState(null);
       const [health, setHealth] = React.useState({ loading: true });
       const autoPreviewRef = React.useRef("");
@@ -713,6 +798,30 @@ window.__ModuleLoader__.load({
           ["进行中", tasks.filter((item) => !item.pending && item.status !== "completed")],
           ["已完成", tasks.filter((item) => item.status === "completed")],
         ];
+        const q = query.trim().toLowerCase();
+        const filteredGroups = groups
+          .map(([label, items]) => [
+            label,
+            items.filter(
+              (item) =>
+                !q ||
+                String(item.title || "").toLowerCase().includes(q) ||
+                String(item.id || "").toLowerCase().includes(q),
+            ),
+          ])
+          .filter(([, items]) => items.length);
+        const visibleGroups =
+          listFilter === "all"
+            ? filteredGroups
+            : filteredGroups.filter(([label]) =>
+                listFilter === "pending" ? label === "待处理" : listFilter === "active" ? label === "进行中" : label === "已完成",
+              );
+        const statusMeta = (item) =>
+          item.status === "completed"
+            ? { label: "已完成", color: C.ok, bg: "rgba(18,160,92,0.10)" }
+            : item.pending
+              ? { label: "待处理", color: C.warn, bg: "rgba(199,120,0,0.12)" }
+              : { label: "进行中", color: BRAND, bg: "rgba(59,63,182,0.10)" };
         return h(
           "div",
           { style: s.page },
@@ -725,7 +834,26 @@ window.__ModuleLoader__.load({
               "div",
               { style: s.head },
               h("h1", { style: s.h1 }, "技术文件起草"),
-              h("span", { style: s.sub }, "按业务流推进，门禁未过不能进入下一步"),
+              h(
+                "div",
+                { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+                h("span", { style: s.sub }, "模板统一 · 门禁推进 · 出稿即归档"),
+                !health.loading
+                  ? h(
+                      "span",
+                      {
+                        style: {
+                          fontSize: 11.5,
+                          borderRadius: 9,
+                          padding: "2px 8px",
+                          color: (health.issues || []).length ? C.err : C.ok,
+                          background: (health.issues || []).length ? "rgba(213,73,65,0.10)" : "rgba(18,160,92,0.10)",
+                        },
+                      },
+                      (health.issues || []).length ? "需要自检" : "环境正常",
+                    )
+                  : null,
+              ),
               h(
                 "div",
                 { style: s.actionsRow },
@@ -773,11 +901,42 @@ window.__ModuleLoader__.load({
             error ? h("div", { style: { color: C.err, fontSize: 13, marginBottom: 12 } }, error) : null,
             h(
               "div",
+              { style: s.hero },
+              h(
+                "div",
+                { style: { flex: "1 1 420px", minWidth: 0 } },
+                h("div", { style: s.heroKicker }, "从这里开始"),
+                h("div", { style: s.heroTitle }, "从参考资料到 GY-F003 正式文件"),
+                h(
+                  "div",
+                  { style: s.heroText },
+                  "新建任务后按 7 步推进：填基本信息、选文档属性、准备参考资料、确认大纲、生成成稿、确认修订、出稿归档。所有 Word 统一套 GY-F003 模板，页面只保存任务与决策，生成、自检、修订和预审交给助手执行。",
+                ),
+              ),
+              h(
+                "div",
+                { style: s.heroSteps },
+                h("div", { style: s.heroStep }, h("span", { style: s.heroNum }, "1"), "建任务"),
+                h("div", { style: s.heroStep }, h("span", { style: s.heroNum }, "2"), "备资料 / 定大纲"),
+                h("div", { style: s.heroStep }, h("span", { style: s.heroNum }, "3"), "生成 / 出稿"),
+              ),
+            ),
+            h(
+              "div",
+              { style: s.stats },
+              h("div", { style: s.statCard }, h("div", { style: s.statValue }, tasks.length), h("div", { style: s.statLabel }, "全部任务")),
+              h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[0][1].length), h("div", { style: s.statLabel }, "待处理")),
+              h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[1][1].length), h("div", { style: s.statLabel }, "进行中")),
+              h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[2][1].length), h("div", { style: s.statLabel }, "已完成")),
+            ),
+            h(
+              "div",
               { style: s.entries },
               h(
                 "div",
-                { style: s.entryGroup },
-                h("div", { style: s.entryTitle }, "创建技术资料"),
+                { style: s.entryCard },
+                h("div", { style: s.entryHead }, h("span", { style: s.entryTitle2 }, "创建技术资料"), h("span", { style: s.entryTag }, "7 步")),
+                h("div", { style: s.entryDesc }, "从空白或参考资料起草技术文件、需求规范和技术方案；生成、自检、修订、套模板都在同一条流程里完成。"),
                 h(
                   "div",
                   { style: s.entryRow },
@@ -785,18 +944,51 @@ window.__ModuleLoader__.load({
                   h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（暂缓）"),
                   h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "试验数据（预留）"),
                 ),
+                h("div", { style: s.entryHint }, "已有定稿、只需套模板时，在 D3 选择「原样套模板」。"),
               ),
               h(
                 "div",
-                { style: s.entryGroup },
-                h("div", { style: s.entryTitle }, "评审技术资料"),
+                { style: s.entryCard },
+                h("div", { style: s.entryHead }, h("span", { style: s.entryTitle2 }, "评审技术资料"), h("span", { style: s.entryTag }, "5 步")),
+                h("div", { style: s.entryDesc }, "上传或链接受审文件，按评审单检查内容与模板格式，输出预审意见；不输出通过/不通过结论。"),
                 h(
                   "div",
                   { style: s.entryRow },
                   h("button", { style: s.btn, onClick: () => newTask("review") }, "技术文件"),
                   h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（预留）"),
                 ),
+                h("div", { style: s.entryHint }, "意见书和修订结果会回到任务里，可继续处置。"),
               ),
+            ),
+            h(
+              "div",
+              { style: s.listToolbar },
+              h(
+                "div",
+                { style: s.filterRow },
+                [
+                  ["all", `全部 ${tasks.length}`],
+                  ["pending", `待处理 ${groups[0][1].length}`],
+                  ["active", `进行中 ${groups[1][1].length}`],
+                  ["done", `已完成 ${groups[2][1].length}`],
+                ].map(([key, label]) =>
+                  h(
+                    "button",
+                    {
+                      key,
+                      style: { ...s.filterBtn, ...(listFilter === key ? s.filterBtnActive : {}) },
+                      onClick: () => setListFilter(key),
+                    },
+                    label,
+                  ),
+                ),
+              ),
+              h("input", {
+                style: s.search,
+                value: query,
+                placeholder: "搜索名称或任务号",
+                onChange: (event) => setQuery(event.target.value),
+              }),
             ),
             !font.loading && !font.installed
               ? h(
@@ -817,20 +1009,41 @@ window.__ModuleLoader__.load({
               : null,
             notice ? h("div", { style: { color: C.ok, fontSize: 12.5, marginBottom: 8 } }, notice) : null,
             tasks.length === 0
-              ? h("div", { style: s.note }, "还没有任务。从上方选择「创建技术资料 → 技术文件」开始。")
-              : groups.map(([label, items]) =>
-                  items.length
-                    ? h(
+              ? h(
+                  "div",
+                  { style: s.empty },
+                  h("div", { style: { fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 6 } }, "还没有任务"),
+                  h("div", { style: { marginBottom: 12 } }, "从上方选择「创建技术资料 → 技术文件」，或先看使用指南了解 7 步流程。"),
+                  h("button", { style: s.btn, onClick: () => newTask("draft") }, "新建技术文件"),
+                )
+              : visibleGroups.length === 0
+                ? h("div", { style: s.empty }, query ? `没有匹配「${query}」的任务` : "该分组下还没有任务")
+                : visibleGroups.map(([label, items]) =>
+                    h(
+                      "div",
+                      { key: label },
+                      h("div", { style: s.groupTitle }, label, h("span", { style: s.groupCount }, `${items.length} 项`)),
+                      h(
                         "div",
-                        { key: label },
-                        h("div", { style: s.groupTitle }, label, h("span", { style: s.groupCount }, `${items.length} 项`)),
-                        h(
-                          "div",
-                          { style: s.cards },
-                          items.map((item) =>
+                        { style: s.cards },
+                        items.map((item) => {
+                          const total = stepsOf(item.flow).length;
+                          const current = Math.min(Number(item.step) || 1, total);
+                          const pct = item.status === "completed" ? 100 : Math.round((current / total) * 100);
+                          const status = statusMeta(item);
+                          const flowLabel = item.flow === "review" ? "评审" : "创建";
+                          const nextHint =
+                            item.status === "completed"
+                              ? "流程已完成，可打开查看记录和已出稿文件。"
+                              : item.pending
+                                ? "有待处理事项：打开任务查看意见或待确认修订。"
+                                : `下一步：${stepsOf(item.flow)[current - 1] || "继续"}`;
+                          return h(
+                            "div",
+                            { key: item.id, style: s.taskCard, onClick: () => openTask(item.id) },
                             h(
                               "div",
-                              { key: item.id, style: s.taskCard, onClick: () => openTask(item.id) },
+                              { style: s.taskTop },
                               h(
                                 "div",
                                 { style: s.taskTitle },
@@ -838,41 +1051,63 @@ window.__ModuleLoader__.load({
                                 item.title || "未命名",
                               ),
                               h(
-                                "div",
-                                { style: s.taskMeta },
-                                h("span", { style: s.badge }, item.flow === "review" ? "评审" : "创建"),
-                                h("span", null, `${item.id}`),
-                                h("span", null, `${item.step}/${stepsOf(item.flow).length} · ${item.stepName}`),
-                                h("span", null, String(item.updatedAt || "").replace("T", " ").slice(0, 16)),
-                              ),
-                              h(
-                                "div",
-                                {
-                                  style: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 8 },
-                                  onClick: (event) => event.stopPropagation(),
-                                },
-                                confirmId === item.id
-                                  ? h("span", { style: { fontSize: 12, color: C.err } }, "删除后不可恢复")
-                                  : null,
-                                confirmId === item.id
-                                  ? h("button", { style: s.dangerBtn, onClick: () => removeTask(item.id) }, "确认删除")
-                                  : h("button", { style: s.btnGhost, onClick: () => setConfirmId(item.id) }, "删除"),
-                                confirmId === item.id
-                                  ? h("button", { style: s.btnGhost, onClick: () => setConfirmId("") }, "取消")
-                                  : null,
+                                "span",
+                                { style: { ...s.taskStatus, color: status.color, background: status.bg } },
+                                status.label,
                               ),
                             ),
-                          ),
-                        ),
-                      )
-                    : null,
-                ),
+                            h(
+                              "div",
+                              { style: s.taskMeta },
+                              h("span", { style: s.badge }, flowLabel),
+                              h("span", null, item.id),
+                              h("span", null, `${current}/${total} · ${item.stepName}`),
+                              h("span", null, `更新 ${String(item.updatedAt || "").replace("T", " ").slice(0, 16)}`),
+                            ),
+                            h(
+                              "div",
+                              { style: s.progressRow },
+                              h("div", { style: s.progressTrack }, h("div", { style: { ...s.progressFill, width: `${pct}%` } })),
+                              h("span", { style: s.progressText }, `${pct}%`),
+                            ),
+                            h("div", { style: s.taskNext }, nextHint),
+                            h(
+                              "div",
+                              { style: s.taskActions, onClick: (event) => event.stopPropagation() },
+                              confirmId === item.id ? h("span", { style: { fontSize: 12, color: C.err } }, "删除后不可恢复") : null,
+                              h(
+                                "button",
+                                { style: s.btnSecondary, onClick: () => openTask(item.id) },
+                                item.status === "completed" ? "查看" : "打开",
+                              ),
+                              confirmId === item.id
+                                ? h("button", { style: s.dangerBtn, onClick: () => removeTask(item.id) }, "确认删除")
+                                : h("button", { style: s.btnGhost, onClick: () => setConfirmId(item.id) }, "删除"),
+                              confirmId === item.id
+                                ? h("button", { style: s.btnGhost, onClick: () => setConfirmId("") }, "取消")
+                                : null,
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                  ),
             h(
               "div",
-              { style: s.note },
-              "知识库：",
-              h("a", { href: WIKI_URL, target: "_blank", rel: "noreferrer", style: s.link }, "技术资料起草库 / 首页（使用指南）"),
-              "。页面保存任务与决策，生成、自检、预审、修订由助手执行。",
+              { style: s.help },
+              h("div", { style: { color: C.text, fontWeight: 600, marginBottom: 4 } }, "使用指引"),
+              h("div", null, "建任务 → 填属性与参考资料 → 确认大纲 → 生成与修订 → 出稿。门禁未过的步骤不能跳到下一步；中途退出可从任务列表继续。"),
+              h(
+                "div",
+                { style: { marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap" } },
+                h("a", { href: WIKI_URL, target: "_blank", rel: "noreferrer", style: s.link }, "知识库首页 / 使用指南"),
+                h(
+                  "a",
+                  { href: "https://govy.feishu.cn/wiki/BHmlw02piiDZLqkcf6LcCH6xnbd", target: "_blank", rel: "noreferrer", style: s.link },
+                  "插件安装指南（图文）",
+                ),
+                h("span", null, "生成、自检、预审、修订由助手执行；页面只保存任务与决策。"),
+              ),
             ),
           ),
         );
