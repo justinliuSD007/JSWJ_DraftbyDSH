@@ -11,7 +11,6 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
 
     const PANEL_ID = "jswj-draft";
-    const FORMAL = "技术文件起草（JSWJ_DraftbyDSH）";
     let WIKI_URL = "https://govy.feishu.cn/wiki/Arv4wKueCiTuS3kddZrcwGHvnOb";
     const inject = ["slots", "remote", "remote.session", "uiWorkspace"];
 
@@ -896,7 +895,7 @@ window.__ModuleLoader__.load({
           h(
             "div",
             { style: s.inner },
-            h("div", { style: s.brandRow }, h(GovyBrand), h("span", { style: s.eyebrow }, FORMAL)),
+            h("div", { style: s.brandRow }, h(GovyBrand)),
             h(
               "div",
               { style: s.head },
@@ -2392,7 +2391,7 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { style: s.inner },
-          h("div", { style: s.brandRow }, h(GovyBrand), h("span", { style: s.eyebrow }, FORMAL)),
+          h("div", { style: s.brandRow }, h(GovyBrand)),
           h(
             "div",
             { style: s.head },
