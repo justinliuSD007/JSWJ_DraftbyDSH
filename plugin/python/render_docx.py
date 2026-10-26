@@ -709,29 +709,34 @@ def fill_cover(doc, meta):
 
 
 def fill_signers(doc, signers):
-    """按任务提供的会签名单重建封面会签表；每行 4 个单元格。"""
+    """按任务提供的会签名单重建封面会签表；沿用模板行高、字体和单元格格式。"""
     if not signers:
         return
     for table in doc.tables:
         if not table.rows or table.rows[0].cells[0].text.strip() != "会签部门":
             continue
+        template_tr = copy.deepcopy(table.rows[1]._tr) if len(table.rows) > 1 else None
         for row in list(table.rows)[1:]:
             row._element.getparent().remove(row._element)
         for values in signers:
-            row = table.add_row()
+            if template_tr is not None:
+                table._tbl.append(copy.deepcopy(template_tr))
+                row = table.rows[-1]
+            else:
+                row = table.add_row()
             for c in range(4):
                 cell = row.cells[c]
-                cell.text = ""
                 par = cell.paragraphs[0]
-                par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                par.paragraph_format.space_before = Pt(0)
-                par.paragraph_format.space_after = Pt(0)
-                par.paragraph_format.line_spacing = 1.0
-                run = par.add_run(str(values[c]) if c < len(values) else "")
-                run.font.name = "宋体"
-                run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
-                run.font.size = Pt(10.5)
-                cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+                value = str(values[c]) if c < len(values) else ""
+                if par.runs:
+                    par.runs[0].text = value
+                    for run in par.runs[1:]:
+                        run.text = ""
+                else:
+                    run = par.add_run(value)
+                    run.font.name = "宋体"
+                    run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+                    run.font.size = Pt(10.5)
         break
 
 
