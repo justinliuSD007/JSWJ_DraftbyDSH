@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "title": {
+    "en": "GOVY Technical Document Tools",
+    "zh-cn": "高域技术文件工具"
+  },
+  "description": {
+    "en": "DSH plugins for GOVY technical document drafting and pre-review.",
+    "zh-cn": "高域技术文件起草与 AI 预审插件集合。"
+  },
+  "metadata": {
+    "categories": {
+      "document": {
+        "title": {
+          "en": "Documents",
+          "zh-cn": "技术文件"
+        }
+      }
+    },
+    "labels": {
+      "govy": {
+        "title": {
+          "en": "GOVY",
+          "zh-cn": "高域"
+        }
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "@govy/dsh-plugin-jswj-draft",
+      "title": {
+        "en": "GOVY Technical Document Drafting",
+        "zh-cn": "技术文件起草（JSWJ_DraftbyDSH）"
+      },
+      "description": {
+        "en": "Draft and pre-review Feishu technical documents with GY-F003 Word output.",
+        "zh-cn": "面向飞书知识库的技术文件起草与 AI 预审，统一套用 GY-F003 模板出稿。"
+      },
+      "icon": "https://raw.githubusercontent.com/justinliuSD007/JSWJ_DraftbyDSH/main/plugin/icon.svg",
+      "author": "GOVY",
+      "homepage": "https://govy.feishu.cn/wiki/BHmlw02piiDZLqkcf6LcCH6xnbd",
+      "repository": {
+        "url": "https://github.com/justinliuSD007/JSWJ_DraftbyDSH",
+        "directory": "plugin"
+      },
+      "metadata": {
+        "category": "document",
+        "keywords": [
+          "技术文件",
+          "起草",
+          "预审",
+          "GY-F003",
+          "飞书",
+          "GOVY"
+        ],
+        "labels": [
+          "govy"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.6.25",
+          "publishTimestamp": 1793003660,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/justinliuSD007/JSWJ_DraftbyDSH",
+            "commit": "3781e897a5690cbfa864bfd7f17f6f525bd5d966",
+            "path": "plugin"
+          },
+          "engines": {
+            "dsh": ">=0.2.1-rc.3"
+          }
+        }
+      ]
+    }
+  ]
+}
