@@ -261,6 +261,8 @@ export function evaluateGate(flow, step, task) {
     if (step === 3) {
       const ok = (d.sources ?? []).filter((s) => s && s.ok);
       need(ok.length > 0, "G3：至少一份参考资料解析成功");
+      const mirrors = ok.filter((s) => s.mode === "mirror");
+      need(mirrors.length <= 1, "G3：「原样套模板」最多只能选一份资料，其他资料请改为参考写法、参考章节结构或背景资料");
     }
     if (step === 4) {
       const chapters = d.outline?.chapters ?? [];

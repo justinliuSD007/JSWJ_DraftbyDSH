@@ -454,7 +454,7 @@ window.__ModuleLoader__.load({
       const modeLabels = {
         mirror: "原样套模板：章节结构、正文内容、表格与图片均按参考资料原样保留，不做内容改写，只按 GY-F003 排版",
         template: "参考写法：沿用章节结构、行文语气、表格与图片，按本次主题重写内容",
-        structure: "参考结构：沿用章节与写法，正文重写",
+        structure: "参考章节结构：沿用章节层级和顺序，正文重写，不照搬行文",
         background: "背景资料：只取事实、数据与约束，重新起草，不照搬结构",
       };
       const sources = task.data?.sources || [];
@@ -1079,7 +1079,7 @@ window.__ModuleLoader__.load({
             const SOURCE_MODES = [
               ["mirror", "原样套模板（内容不改，仅排版）"],
               ["template", "参考写法（结构 / 行文 / 图片，内容重写）"],
-              ["structure", "参考结构（只借结构，正文重写）"],
+              ["structure", "参考章节结构（沿用章节层级，正文重写）"],
               ["background", "背景资料（重新起草）"],
             ];
             const setSourceMode = (index, mode) =>
@@ -1152,7 +1152,7 @@ window.__ModuleLoader__.load({
                       ),
                     ),
               ),
-              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：原样套模板（内容不改，仅排版）、参考写法（结构/行文/图片，内容重写）、参考结构（只借结构）、背景资料（重新起草）。"),
+              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：原样套模板（内容不改，仅排版）、参考写法（结构/行文/图片，内容重写）、参考章节结构（沿用章节层级）、背景资料（重新起草）。可以贴多份资料、每份单独选参考程度；但「原样套模板」最多只能选一份。"),
               h(
                 "div",
                 { style: s.footer },
@@ -1485,7 +1485,7 @@ window.__ModuleLoader__.load({
             const revisionExtra =
               "请读取 selfcheck.items 与本轮文档，汇总为 revision.items（severity / location / problem / action）并写回任务；不要直接改正文。";
             const generationExtra = hasMirror
-              ? "本次任务含原样套模板资料：跳过内容起草，直接以该资料的章节结构、正文内容、表格与图片为底稿，整理为 GY-F003 章节 Markdown；不改写、不扩写、不补写，保留原图/表题注，写回 generation.status=done、draft.markdown、draft.ready=true、draft.version 加 1。"
+              ? "本次任务含原样套模板资料：以标为「原样套模板」的资料为唯一底稿，跳过内容起草，直接以它的章节结构、正文内容、表格与图片整理为 GY-F003 章节 Markdown；其他参考资料只用于补充或校验，不改写底稿。保留原图/表题注，写回 generation.status=done、draft.markdown、draft.ready=true、draft.version 加 1。"
               : "生成后自动自检并修订，直到没有严重项；表格前写「表 章-序号 标题」，图片后写「图 章-序号 标题」，供图目录/表目录生成；再写回 generation.status=done、selfcheck.status=clean、revision.done=true，并把成稿正文写入 draft.markdown、draft.ready=true、draft.version 加 1。";
             const selfcheckItems = selfcheck.items || [];
             const selfcheckBlockers = selfcheckItems.filter((item) => item.severity === "严重");
