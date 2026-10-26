@@ -55,7 +55,7 @@ skills/jswj-draftbydsh/      Skill：业务流、门禁、出稿规范、任务�
    左侧「技术文件起草」→ 新建技术文件 / 新建预审 → 按步骤推进。
 
 完整的安装、权限、配置和常见问题见知识库「技术文件起草插件安装指南（图文）」：
-https://govy.feishu.cn/wiki/BHmlw02piiDZLqkcf6LcCH6xnbd
+https://govy.feishu.cn/wiki/BA6bweX87iEgnEkbRR2cKKMznTd
 
 ## 工具
 
