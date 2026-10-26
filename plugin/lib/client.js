@@ -91,8 +91,7 @@ window.__ModuleLoader__.load({
         flex: "1 1 auto",
         height: "100%",
         minHeight: 0,
-        overflowY: "auto",
-        overflowX: "hidden",
+        overflow: "hidden",
         background: C.base,
         color: C.text,
         fontFamily: FONT,
@@ -146,7 +145,7 @@ window.__ModuleLoader__.load({
         boxShadow: "0 2px 8px rgba(15,18,35,0.06)",
         background: "linear-gradient(135deg, rgba(59,63,182,0.12) 0%, rgba(166,74,151,0.10) 100%)",
       },
-      inner: { maxWidth: 1080, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 },
+      inner: { maxWidth: 1080, width: "100%", height: "100%", minHeight: 0, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14, boxSizing: "border-box" },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
       eyebrow: { fontSize: 12, color: C.sub, letterSpacing: "0.04em", marginBottom: 6 },
       crumb: { fontSize: 12, color: C.sub, marginBottom: 10 },
@@ -338,8 +337,8 @@ window.__ModuleLoader__.load({
       groupCount: { fontSize: 12, fontWeight: 400, color: C.sub },
       pendingDot: { width: 6, height: 6, borderRadius: 3, background: C.warn, display: "inline-block", marginRight: 6 },
       taskScroll: {
-        maxHeight: "60vh",
-        minHeight: 220,
+        flex: "1 1 auto",
+        minHeight: 0,
         overflowY: "auto",
         overflowX: "hidden",
         paddingRight: 6,
@@ -940,7 +939,7 @@ window.__ModuleLoader__.load({
             { style: s.inner },
             h(
               "div",
-              { style: s.panel },
+              { style: { ...s.panel, flex: "0 0 auto" } },
             h("div", { style: s.brandRow }, h(GovyBrand)),
             h(
               "div",
@@ -1020,7 +1019,7 @@ window.__ModuleLoader__.load({
             ),
             h(
               "div",
-              { style: s.startPanel },
+              { style: { ...s.startPanel, flex: "0 0 auto" } },
               h(
                 "div",
                 { style: s.regionHead },
@@ -1074,10 +1073,19 @@ window.__ModuleLoader__.load({
             ),
             h(
               "div",
-              { style: s.panel },
+              {
+                style: {
+                  ...s.panel,
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: "1 1 auto",
+                  minHeight: 0,
+                  overflow: "hidden",
+                },
+              },
               h(
                 "div",
-                { style: s.regionHead },
+                { style: { ...s.regionHead, flex: "0 0 auto" } },
                 h("span", { style: { ...s.regionNo, background: "linear-gradient(50deg, #A64A97 0%, #3B3FB6 100%)" } }, "02"),
                 h(
                   "div",
@@ -1089,7 +1097,7 @@ window.__ModuleLoader__.load({
               ),
             h(
               "div",
-              { style: s.stats },
+              { style: { ...s.stats, flex: "0 0 auto" } },
               h("div", { style: { ...s.statCard, background: "rgba(59,63,182,0.08)", borderColor: "rgba(59,63,182,0.22)" } }, h("div", { style: s.statValue }, tasks.length), h("div", { style: s.statLabel }, "全部任务")),
               h("div", { style: { ...s.statCard, background: "rgba(166,74,151,0.09)", borderColor: "rgba(166,74,151,0.25)" } }, h("div", { style: s.statValue }, groups[0][1].length), h("div", { style: s.statLabel }, "待处理")),
               h("div", { style: { ...s.statCard, background: "rgba(59,63,182,0.10)", borderColor: "rgba(59,63,182,0.28)" } }, h("div", { style: s.statValue }, groups[1][1].length), h("div", { style: s.statLabel }, "进行中")),
@@ -1097,7 +1105,7 @@ window.__ModuleLoader__.load({
             ),
             h(
               "div",
-              { style: s.listToolbar },
+              { style: { ...s.listToolbar, flex: "0 0 auto" } },
               h(
                 "div",
                 { style: s.filterRow },
@@ -1234,10 +1242,10 @@ window.__ModuleLoader__.load({
             ),
             h(
               "div",
-              { style: s.panel },
+              { style: { ...s.panel, flex: "0 0 auto", padding: "12px 18px" } },
               h(
                 "div",
-                { style: s.regionHead },
+                { style: { ...s.regionHead, marginBottom: 8 } },
                 h("span", { style: { ...s.regionNo, background: "linear-gradient(50deg, #A64A97 0%, #3B3FB6 100%)" } }, "03"),
                 h(
                   "div",
