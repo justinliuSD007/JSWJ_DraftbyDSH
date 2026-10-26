@@ -10,7 +10,7 @@
  */
 
 const name = "jswj-draft";
-const inject = ["tools"];
+const inject = ["tools", "webServer"];
 
 const API = "https://open.feishu.cn/open-apis";
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -1996,7 +1996,7 @@ function apply(ctx, config = {}) {
 
   // ---------------------------------------------------------------- 页面数据通道
 
-  const webServer = ctx.get("webServer");
+  const webServer = ctx.webServer ?? ctx.get("webServer");
   if (webServer) {
     ctx.effect(
       () =>
