@@ -137,18 +137,16 @@ window.__ModuleLoader__.load({
         borderRadius: 16,
         background: C.layer1,
         padding: "16px 18px",
-        marginBottom: 16,
         boxShadow: "0 1px 2px rgba(15,18,35,0.04)",
       },
       startPanel: {
-        marginTop: 20,
         padding: "18px 18px 16px",
         borderRadius: 16,
         border: `1px solid ${BORDER_BRAND}`,
         boxShadow: "0 2px 8px rgba(15,18,35,0.06)",
         background: "linear-gradient(135deg, rgba(59,63,182,0.12) 0%, rgba(166,74,151,0.10) 100%)",
       },
-      inner: { maxWidth: 1080, margin: "0 auto" },
+      inner: { maxWidth: 1080, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
       eyebrow: { fontSize: 12, color: C.sub, letterSpacing: "0.04em", marginBottom: 6 },
       crumb: { fontSize: 12, color: C.sub, marginBottom: 10 },
@@ -1224,7 +1222,7 @@ window.__ModuleLoader__.load({
             ),
             h(
               "div",
-              { style: { ...s.panel, marginTop: 16 } },
+              { style: s.panel },
               h(
                 "div",
                 { style: s.regionHead },
