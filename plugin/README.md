@@ -31,7 +31,8 @@ plugin/
 
 ## 安装
 
-推荐用仓库根目录的 `pack-plugin.ps1` 打成 zip，交给对方在 DSH 插件管理里安装本地 bundle；详细步骤见 [INSTALL.md](./INSTALL.md) 和知识库「插件安装指南」。
+推荐用仓库根目录的 `pack-plugin.ps1` 打成 zip，交给对方在 DSH 插件管理里安装本地 bundle；详细步骤见 [INSTALL.md](./INSTALL.md) 和知识库「技术文件起草插件安装指南（图文）」：
+https://govy.feishu.cn/wiki/VaWSwJDrGiElApkOLThcI1qGn8b
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-plugin.ps1
