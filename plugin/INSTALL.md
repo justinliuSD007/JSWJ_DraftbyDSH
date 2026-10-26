@@ -1,6 +1,6 @@
 # 技术文件起草（JSWJ_DraftbyDSH）安装指南
 
-适用版本：`0.6.26` ｜ 一键安装 ｜ 约 2 分钟
+适用版本：`0.7.0-beta.1` ｜ 一键安装 ｜ 约 2 分钟
 
 ![一键安装流程](INSTALL.assets/install-oneclick.png)
 
@@ -8,7 +8,7 @@
 
 ## 一键安装（推荐）
 
-1. 下载 `JSWJ-Draft-Setup-0.6.26.exe`。
+1. 下载 `JSWJ-Draft-Setup-0.7.0-beta.1.exe`。
 2. 完全退出 DSH（不是最小化）。
 3. 双击安装器，按提示输入飞书应用「GO秘」的 `appId` 和 `appSecret`。
 4. 安装器自动完成：
