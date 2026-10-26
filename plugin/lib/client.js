@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
         padding: "18px 18px 16px",
         borderRadius: 16,
         border: `1px solid ${C.line2}`,
-        background: "linear-gradient(135deg, rgba(59,63,182,0.07) 0%, rgba(166,74,151,0.055) 100%)",
+        background: "linear-gradient(135deg, rgba(59,63,182,0.12) 0%, rgba(166,74,151,0.10) 100%)",
       },
       inner: { maxWidth: 1080, margin: "0 auto" },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
@@ -987,8 +987,13 @@ window.__ModuleLoader__.load({
               { style: s.entries },
               h(
                 "div",
-                { style: s.entryCard },
-                h("div", { style: s.entryHead }, h("span", { style: s.entryTitle2 }, "创建技术资料"), h("span", { style: s.entryTag }, "7 步")),
+                { style: { ...s.entryCard, borderTop: `3px solid ${BRAND}` } },
+                h(
+                  "div",
+                  { style: s.entryHead },
+                  h("span", { style: s.entryTitle2 }, "创建技术资料"),
+                  h("span", { style: { ...s.entryTag, color: BRAND, borderColor: "rgba(59,63,182,0.35)" } }, "7 步"),
+                ),
                 h("div", { style: s.entryDesc }, "从空白或参考资料起草技术文件、需求规范和技术方案；生成、自检、修订、套模板都在同一条流程里完成。"),
                 h(
                   "div",
@@ -1001,8 +1006,13 @@ window.__ModuleLoader__.load({
               ),
               h(
                 "div",
-                { style: s.entryCard },
-                h("div", { style: s.entryHead }, h("span", { style: s.entryTitle2 }, "评审技术资料"), h("span", { style: s.entryTag }, "5 步")),
+                { style: { ...s.entryCard, borderTop: `3px solid ${BRAND_ALT}` } },
+                h(
+                  "div",
+                  { style: s.entryHead },
+                  h("span", { style: s.entryTitle2 }, "评审技术资料"),
+                  h("span", { style: { ...s.entryTag, color: BRAND_ALT, borderColor: "rgba(166,74,151,0.35)" } }, "5 步"),
+                ),
                 h("div", { style: s.entryDesc }, "上传或链接受审文件，按评审单检查内容与模板格式，输出预审意见；不输出通过/不通过结论。"),
                 h(
                   "div",
@@ -1017,16 +1027,16 @@ window.__ModuleLoader__.load({
             h(
               "div",
               { style: { ...s.sectionHead, marginTop: 24, paddingTop: 16, borderTop: `1px solid ${C.line}` } },
-              h("span", { style: s.sectionKicker }, "任务"),
+              h("span", { style: { ...s.sectionKicker, color: BRAND_ALT } }, "任务"),
               h("span", { style: s.sectionTitle }, "我的任务"),
               h("span", { style: s.sectionDesc }, "按状态筛选，或搜索名称 / 任务号"),
             ),
             h(
               "div",
               { style: s.stats },
-              h("div", { style: s.statCard }, h("div", { style: s.statValue }, tasks.length), h("div", { style: s.statLabel }, "全部任务")),
-              h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[0][1].length), h("div", { style: s.statLabel }, "待处理")),
-              h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[1][1].length), h("div", { style: s.statLabel }, "进行中")),
+              h("div", { style: { ...s.statCard, background: "rgba(59,63,182,0.08)", borderColor: "rgba(59,63,182,0.22)" } }, h("div", { style: s.statValue }, tasks.length), h("div", { style: s.statLabel }, "全部任务")),
+              h("div", { style: { ...s.statCard, background: "rgba(166,74,151,0.09)", borderColor: "rgba(166,74,151,0.25)" } }, h("div", { style: s.statValue }, groups[0][1].length), h("div", { style: s.statLabel }, "待处理")),
+              h("div", { style: { ...s.statCard, background: "rgba(59,63,182,0.10)", borderColor: "rgba(59,63,182,0.28)" } }, h("div", { style: s.statValue }, groups[1][1].length), h("div", { style: s.statLabel }, "进行中")),
               h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[2][1].length), h("div", { style: s.statLabel }, "已完成")),
             ),
             h(
