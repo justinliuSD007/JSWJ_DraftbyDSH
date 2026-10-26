@@ -4,6 +4,10 @@
 
 视觉按高域 VIS 基础部分实现：主色高域紫 `#3B3FB6`、辅助高域红 `#A64A97`、标准渐变 50°、界面字体 HarmonyOS Sans（未安装时回退系统中文黑体）。
 
+## 核心原则：模板是底座
+
+本插件所有业务 Word（预览稿、正式稿、修订稿）都必须从 `template/GY-F003-cleaned.docx` 渲染，统一走 `python/render_docx.py`。模板规则是底层能力，覆盖封面、页眉页脚、分节页码、章节/列表编号、题注与图/表目录、表格列宽、合并单元格、多行表头、会签表。禁止在业务代码里直接手搓 docx 或硬编码版式；修改模板相关代码后必须按 Skill 里的「出稿前检查清单」回归。
+
 - 知识库读写：`jswj_ping` / `jswj_wiki_list` / `jswj_doc_read` / `jswj_wiki_create` / `jswj_doc_append`
 - Word 出稿：`jswj_render_docx`（Markdown → GY-F003 .docx）
 - 发布：`jswj_publish_docx`（上传 .docx → 移入知识库文件节点）

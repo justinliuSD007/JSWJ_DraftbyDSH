@@ -91,12 +91,12 @@ def parse(md):
             blocks.append(("ul", items))
             continue
 
-        if re.match(r"^\d+\.\s", s):
+        if re.match(r"^(?:\d+[.)]|[a-zA-Z][.)])\s", s):
             items = []
             while i < len(lines):
                 raw = lines[i].rstrip()
                 current = raw.strip()
-                if re.match(r"^(?:\d+\.|[a-zA-Z]\))\s*", current):
+                if re.match(r"^(?:\d+[.)]|[a-zA-Z][.)])\s*", current):
                     items.append(raw)
                     i += 1
                     continue
@@ -104,7 +104,7 @@ def parse(md):
                     j = i
                     while j < len(lines) and not lines[j].strip():
                         j += 1
-                    if j < len(lines) and re.match(r"^(?:\d+\.|[a-zA-Z]\))\s*", lines[j].strip()):
+                    if j < len(lines) and re.match(r"^(?:\d+[.)]|[a-zA-Z][.)])\s*", lines[j].strip()):
                         i = j
                         continue
                 break
@@ -890,7 +890,7 @@ def build(args):
                 raw = str(item)
                 indent = len(raw) - len(raw.lstrip(" "))
                 level = 2 if indent >= 2 else 1
-                text = re.sub(r"^\s*(?:\d+\.|[a-zA-Z]\))\s*", "", raw)
+                text = re.sub(r"^\s*(?:\d+[.)]|[a-zA-Z][.)])\s*", "", raw)
                 par = doc.add_paragraph(style=BODY_STYLE)
                 if level == 2:
                     sub_no += 1
