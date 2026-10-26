@@ -48,7 +48,7 @@ window.__ModuleLoader__.load({
         "确认大纲，补一、二级要点；三级以下可留空。",
         "逐章生成，自检与修订由助手在这一步内部完成。",
         "看成稿、提意见、确认成稿；意见由助手定向修订。",
-        "渲染 GY-F003 Word，发布到知识库并生成回执。",
+        "渲染 Word，发布到知识库并生成回执。",
       ],
       review: [
         "确认预审范围与预计耗时，确认即建立任务。",
@@ -99,6 +99,13 @@ window.__ModuleLoader__.load({
       },
       brandBar: { width: 56, height: 4, borderRadius: 2, background: GRADIENT, marginBottom: 12 },
       brandMark: { width: 10, height: 10, borderRadius: 2, background: GRADIENT, display: "inline-block" },
+      brandRow: { display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 16 },
+      section: { marginTop: 24, paddingTop: 18, borderTop: `1px solid ${C.line}` },
+      sectionFirst: { marginTop: 8, paddingTop: 0, borderTop: "none" },
+      sectionHead: { display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 },
+      sectionKicker: { fontSize: 11, letterSpacing: "0.12em", color: BRAND, fontWeight: 650 },
+      sectionTitle: { fontSize: 16, fontWeight: 650, color: C.text },
+      sectionDesc: { fontSize: 12, color: C.sub },
       inner: { maxWidth: 1080, margin: "0 auto" },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
       eyebrow: { fontSize: 12, color: C.sub, letterSpacing: "0.04em", marginBottom: 6 },
@@ -535,7 +542,7 @@ window.__ModuleLoader__.load({
     function promptFor(task, step, extra) {
       const names = stepsOf(task.flow);
       const modeLabels = {
-        mirror: "原样套模板：章节结构、正文内容、表格与图片均按参考资料原样保留，不做内容改写，只按 GY-F003 排版",
+        mirror: "原样套模板：章节结构、正文内容、表格与图片均按参考资料原样保留，不做内容改写，只按统一版式排版",
         template: "参考写法：沿用章节结构、行文语气、表格与图片，按本次主题重写内容",
         structure: "参考章节结构：沿用章节层级和顺序，正文重写，不照搬行文",
         background: "背景资料：只取事实、数据与约束，重新起草，不照搬结构",
@@ -559,6 +566,60 @@ window.__ModuleLoader__.load({
         .filter(Boolean)
         .join("\n");
     }
+
+    const GovyMark = () =>
+      h(
+        "svg",
+        { width: 42, height: 42, viewBox: "0 0 48 48", "aria-label": "GOVY", role: "img", style: { flex: "0 0 auto" } },
+        h(
+          "defs",
+          null,
+          h(
+            "linearGradient",
+            { id: "govy-mark", x1: "0", y1: "0", x2: "1", y2: "1" },
+            h("stop", { offset: "0", stopColor: BRAND }),
+            h("stop", { offset: "1", stopColor: BRAND_ALT }),
+          ),
+        ),
+        h("rect", { x: 2, y: 2, width: 44, height: 44, rx: 12, fill: "url(#govy-mark)" }),
+        h("path", {
+          d: "M11 30c7-9 16-14 27-15-3 3-5 7-6 11 4 1 8 0 11-2-3 8-11 13-21 13-5 0-9-2-11-7z",
+          fill: "#fff",
+          opacity: "0.22",
+        }),
+        h(
+          "text",
+          {
+            x: 24,
+            y: 34,
+            textAnchor: "middle",
+            fontSize: 20,
+            fontWeight: 700,
+            fill: "#fff",
+            fontFamily: FONT,
+            letterSpacing: "0.5",
+          },
+          "G",
+        ),
+      );
+
+    const GovyBrand = () =>
+      h(
+        "div",
+        { style: { display: "flex", alignItems: "center", gap: 11 } },
+        h(GovyMark),
+        h(
+          "div",
+          null,
+          h(
+            "div",
+            { style: { fontSize: 17, fontWeight: 750, letterSpacing: "0.16em", color: BRAND, lineHeight: 1.1 } },
+            "GOVY",
+          ),
+          h("div", { style: { width: 22, height: 2, background: GRADIENT, borderRadius: 1, margin: "4px 0 3px" } }),
+          h("div", { style: { fontSize: 10.5, color: C.sub, letterSpacing: "0.06em" } }, "技术文件起草"),
+        ),
+      );
 
     function JswjPage(props) {
       const [screen, setScreen] = React.useState("list");
@@ -828,8 +889,7 @@ window.__ModuleLoader__.load({
           h(
             "div",
             { style: s.inner },
-            h("div", { style: s.brandBar }),
-            h("div", { style: s.eyebrow }, h("span", { style: s.brandMark }), FORMAL),
+            h("div", { style: s.brandRow }, h(GovyBrand), h("span", { style: s.eyebrow }, FORMAL)),
             h(
               "div",
               { style: s.head },
@@ -901,25 +961,15 @@ window.__ModuleLoader__.load({
             error ? h("div", { style: { color: C.err, fontSize: 13, marginBottom: 12 } }, error) : null,
             h(
               "div",
-              { style: s.hero },
-              h(
-                "div",
-                { style: { flex: "1 1 420px", minWidth: 0 } },
-                h("div", { style: s.heroKicker }, "从这里开始"),
-                h("div", { style: s.heroTitle }, "从参考资料到 GY-F003 正式文件"),
-                h(
-                  "div",
-                  { style: s.heroText },
-                  "新建任务后按 7 步推进：填基本信息、选文档属性、准备参考资料、确认大纲、生成成稿、确认修订、出稿归档。所有 Word 统一套 GY-F003 模板，页面只保存任务与决策，生成、自检、修订和预审交给助手执行。",
-                ),
-              ),
-              h(
-                "div",
-                { style: s.heroSteps },
-                h("div", { style: s.heroStep }, h("span", { style: s.heroNum }, "1"), "建任务"),
-                h("div", { style: s.heroStep }, h("span", { style: s.heroNum }, "2"), "备资料 / 定大纲"),
-                h("div", { style: s.heroStep }, h("span", { style: s.heroNum }, "3"), "生成 / 出稿"),
-              ),
+              { style: { ...s.envBar, margin: "0 0 16px" } },
+              h("span", { style: s.envLabel }, "使用方式"),
+              h("span", { style: s.envHint }, "选择起草或评审，按步骤推进；任务可随时继续，成稿自动归档到知识库。"),
+            ),
+            h(
+              "div",
+              { style: { ...s.sectionHead, marginTop: 4 } },
+              h("span", { style: s.sectionKicker }, "概览"),
+              h("span", { style: s.sectionTitle }, "任务状态"),
             ),
             h(
               "div",
@@ -928,6 +978,13 @@ window.__ModuleLoader__.load({
               h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[0][1].length), h("div", { style: s.statLabel }, "待处理")),
               h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[1][1].length), h("div", { style: s.statLabel }, "进行中")),
               h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[2][1].length), h("div", { style: s.statLabel }, "已完成")),
+            ),
+            h(
+              "div",
+              { style: { ...s.sectionHead, marginTop: 22, paddingTop: 16, borderTop: `1px solid ${C.line}` } },
+              h("span", { style: s.sectionKicker }, "开始"),
+              h("span", { style: s.sectionTitle }, "新建任务"),
+              h("span", { style: s.sectionDesc }, "选择起草或评审，进入分步流程"),
             ),
             h(
               "div",
@@ -959,6 +1016,13 @@ window.__ModuleLoader__.load({
                 ),
                 h("div", { style: s.entryHint }, "意见书和修订结果会回到任务里，可继续处置。"),
               ),
+            ),
+            h(
+              "div",
+              { style: { ...s.sectionHead, marginTop: 24, paddingTop: 16, borderTop: `1px solid ${C.line}` } },
+              h("span", { style: s.sectionKicker }, "任务"),
+              h("span", { style: s.sectionTitle }, "我的任务"),
+              h("span", { style: s.sectionDesc }, "按状态筛选，或搜索名称 / 任务号"),
             ),
             h(
               "div",
@@ -1095,8 +1159,8 @@ window.__ModuleLoader__.load({
             h(
               "div",
               { style: s.help },
-              h("div", { style: { color: C.text, fontWeight: 600, marginBottom: 4 } }, "使用指引"),
-              h("div", null, "建任务 → 填属性与参考资料 → 确认大纲 → 生成与修订 → 出稿。门禁未过的步骤不能跳到下一步；中途退出可从任务列表继续。"),
+              h("div", { style: { color: C.text, fontWeight: 600, marginBottom: 4 } }, "帮助 · 使用指引"),
+              h("div", null, "建任务 → 填属性与参考资料 → 确认大纲 → 生成/修订 → 出稿；中途可从任务列表继续。"),
               h(
                 "div",
                 { style: { marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap" } },
@@ -1616,7 +1680,7 @@ window.__ModuleLoader__.load({
                       "div",
                       { style: s.note },
                       hasMirror
-                        ? "本次任务含「原样套模板」资料：点「原样套模板生成」会跳过内容起草，直接以资料正文、章节结构、表格与图片为底稿，只按 GY-F003 排版，不改写、不扩写。"
+                        ? "本次任务含「原样套模板」资料：点「原样套模板生成」会跳过内容起草，直接以资料正文、章节结构、表格与图片为底稿，只按统一版式排版，不改写、不扩写。"
                         : "点「交给助手生成」会新建会话：助手逐章生成后自动自检并修订到无严重项，再把 generation.status=done 与成稿正文 draft.markdown 写回任务；回到本页刷新即可进入成稿确认。",
                     ),
                   )
@@ -2299,8 +2363,7 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { style: s.inner },
-          h("div", { style: s.brandBar }),
-          h("div", { style: s.eyebrow }, h("span", { style: s.brandMark }), FORMAL),
+          h("div", { style: s.brandRow }, h(GovyBrand), h("span", { style: s.eyebrow }, FORMAL)),
           h(
             "div",
             { style: s.head },
