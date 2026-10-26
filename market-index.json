@@ -61,11 +61,11 @@
       "versions": [
         {
           "version": "0.6.26",
-          "publishTimestamp": 1793004194,
+          "publishTimestamp": 1793004362,
           "source": {
             "type": "git",
             "url": "https://github.com/justinliuSD007/JSWJ_DraftbyDSH",
-            "commit": "99fe7c3e716114915e4c095100d503f84eee1ddc",
+            "commit": "3940c2cd33de15da2e909120e457fc8510499bd4",
             "path": "plugin"
           },
           "engines": {
