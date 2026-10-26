@@ -970,7 +970,7 @@ window.__ModuleLoader__.load({
               "div",
               { style: { ...s.envBar, margin: "0 0 16px" } },
               h("span", { style: s.envLabel }, "使用方式"),
-              h("span", { style: s.envHint }, "选择起草或评审，按步骤推进；任务可随时继续，成稿自动归档到知识库。"),
+              h("span", { style: s.envHint }, "选择起草或评审，按步骤完成；任务可随时继续。"),
             ),
             h(
               "div",
@@ -980,7 +980,6 @@ window.__ModuleLoader__.load({
                 { style: { ...s.sectionHead, marginBottom: 12 } },
                 h("span", { style: s.sectionKicker }, "开始"),
                 h("span", { style: s.sectionTitle }, "新建任务"),
-                h("span", { style: s.sectionDesc }, "选择起草或评审，进入分步流程"),
               ),
             h(
               "div",
@@ -994,7 +993,7 @@ window.__ModuleLoader__.load({
                   h("span", { style: s.entryTitle2 }, "创建技术资料"),
                   h("span", { style: { ...s.entryTag, color: BRAND, borderColor: "rgba(59,63,182,0.35)" } }, "7 步"),
                 ),
-                h("div", { style: s.entryDesc }, "从空白或参考资料起草技术文件、需求规范和技术方案；生成、自检、修订、套模板都在同一条流程里完成。"),
+                h("div", { style: s.entryDesc }, "新建技术文件"),
                 h(
                   "div",
                   { style: s.entryRow },
@@ -1002,7 +1001,6 @@ window.__ModuleLoader__.load({
                   h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（暂缓）"),
                   h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "试验数据（预留）"),
                 ),
-                h("div", { style: s.entryHint }, "已有定稿、只需套模板时，在 D3 选择「原样套模板」。"),
               ),
               h(
                 "div",
@@ -1013,14 +1011,13 @@ window.__ModuleLoader__.load({
                   h("span", { style: s.entryTitle2 }, "评审技术资料"),
                   h("span", { style: { ...s.entryTag, color: BRAND_ALT, borderColor: "rgba(166,74,151,0.35)" } }, "5 步"),
                 ),
-                h("div", { style: s.entryDesc }, "上传或链接受审文件，按评审单检查内容与模板格式，输出预审意见；不输出通过/不通过结论。"),
+                h("div", { style: s.entryDesc }, "上传受审文件"),
                 h(
                   "div",
                   { style: s.entryRow },
                   h("button", { style: s.btn, onClick: () => newTask("review") }, "技术文件"),
                   h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（预留）"),
                 ),
-                h("div", { style: s.entryHint }, "意见书和修订结果会回到任务里，可继续处置。"),
               ),
             ),
             ),
@@ -1483,7 +1480,7 @@ window.__ModuleLoader__.load({
                       ),
                     ),
               ),
-              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：原样套模板（内容不改，仅排版）、参考写法（结构/行文/图片，内容重写）、参考章节结构（沿用章节层级）、背景资料（重新起草）。可以贴多份资料、每份单独选参考程度；但「原样套模板」最多只能选一份。"),
+              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：原样套模板（内容不改，仅排版）、参考写法（结构/行文/图片，内容重写）、参考章节结构（沿用章节层级）、背景资料（重新起草）。可以贴多份资料、每份单独选参考程度；但「原样套模板」最多只能选一份；已有定稿、只需套版式时选它，需要按新主题改写时选「参考写法」。"),
               h(
                 "div",
                 { style: s.footer },
