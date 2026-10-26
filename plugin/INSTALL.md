@@ -1,10 +1,29 @@
 # 技术文件起草（JSWJ_DraftbyDSH）安装指南
 
-适用版本：`0.6.9` ｜ 5 步完成 ｜ 约 5 分钟
+适用版本：`0.6.26` ｜ 一键安装 ｜ 约 2 分钟
 
-![安装流程](INSTALL.assets/install-flow.png)
+![一键安装流程](INSTALL.assets/install-oneclick.png)
 
-安装包已经包含页面、工具、Word 模板、Python 渲染脚本和配套 Skill。正常安装不需要执行 `npm install`，也不需要手工复制 Skill。
+安装包已经包含页面、工具、Word 模板、Python 渲染脚本和配套 Skill。不需要执行 `npm install`，也不需要手工复制 Skill。
+
+## 一键安装（推荐）
+
+1. 下载 `JSWJ-Draft-Setup-0.6.26.exe`。
+2. 完全退出 DSH（不是最小化）。
+3. 双击安装器，按提示输入飞书应用「GO秘」的 `appId` 和 `appSecret`。
+4. 安装器自动完成：
+   - 解压插件到本机固定目录
+   - 登记 DSH bundle
+   - 建立本地依赖
+   - 写入 GO秘 配置
+5. 安装完成后重新打开 DSH。
+6. 左侧打开「技术文件起草」，点「插件自检」，绿色通过即可使用。
+
+> 安装器不会上传 `appSecret`，只写入本机 DSH profile。首次安装需要输入一次，后续升级不需要重新输入。
+
+## 手动安装（备用）
+
+如果安装器被安全软件拦截，或需要装到自定义目录，按下面手动步骤操作。
 
 ## 一、安装前准备
 
