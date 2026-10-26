@@ -337,6 +337,14 @@ window.__ModuleLoader__.load({
       },
       groupCount: { fontSize: 12, fontWeight: 400, color: C.sub },
       pendingDot: { width: 6, height: 6, borderRadius: 3, background: C.warn, display: "inline-block", marginRight: 6 },
+      taskScroll: {
+        maxHeight: "60vh",
+        minHeight: 220,
+        overflowY: "auto",
+        overflowX: "hidden",
+        paddingRight: 6,
+        marginRight: -6,
+      },
       taskCard: {
         border: `1px solid ${BORDER}`,
         background: C.layer1,
@@ -1135,6 +1143,9 @@ window.__ModuleLoader__.load({
                 )
               : null,
             notice ? h("div", { style: { color: C.ok, fontSize: 12.5, marginBottom: 8 } }, notice) : null,
+            h(
+              "div",
+              { style: s.taskScroll },
             tasks.length === 0
               ? h(
                   "div",
@@ -1219,6 +1230,7 @@ window.__ModuleLoader__.load({
                       ),
                     ),
                   ),
+            ),
             ),
             h(
               "div",
