@@ -173,29 +173,74 @@ function spaceRoot(cfg) {
   return cfg.spaceId;
 }
 
-function resolvePython(cfg) {
+function pythonCandidates(cfg) {
   const dshHome = process.env.DSH_HOME || join(homedir(), ".dsh");
+  const exe = process.platform === "win32" ? "python.exe" : "python";
   const candidates = [];
   if (process.env.JSWJ_PYTHON) candidates.push(process.env.JSWJ_PYTHON);
   if (cfg.pythonPath) candidates.push(cfg.pythonPath);
-  candidates.push(
-    join(dshHome, "dsh-runtimes", "dsh-primary-runtime", "dependencies", "python", process.platform === "win32" ? "python.exe" : "python"),
-  );
-  candidates.push(process.platform === "win32" ? "python.exe" : "python3", "python");
+  candidates.push(join(dshHome, "dsh-runtimes", "dsh-primary-runtime", "dependencies", "python", exe));
   return candidates;
 }
 
+/** 在 PATH 中探测命令是否可用（Windows 用 where，其余用 which）。 */
+async function commandExists(command) {
+  const probe = process.platform === "win32" ? "where" : "which";
+  try {
+    const { stdout } = await execFileAsync(probe, [command], { timeout: 8000, encoding: "utf8" });
+    return String(stdout ?? "").trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** 扫描 dsh-runtimes 下的任意运行时自带的 python，兼容不同版本目录名。 */
+async function scanRuntimePythons() {
+  const dshHome = process.env.DSH_HOME || join(homedir(), ".dsh");
+  const root = join(dshHome, "dsh-runtimes");
+  const exe = process.platform === "win32" ? "python.exe" : "python";
+  const found = [];
+  let entries = [];
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = join(root, entry.name, "dependencies", "python", exe);
+    try {
+      const info = await stat(candidate);
+      if (info.isFile()) found.push(candidate);
+    } catch {
+      /* 该运行时没有自带 python */
+    }
+  }
+  return found;
+}
+
 async function pickPython(cfg) {
-  for (const candidate of resolvePython(cfg)) {
-    if (!isAbsolute(candidate)) return candidate; // PATH 上的 python，交给执行时判断
+  const tried = [];
+  const absolute = pythonCandidates(cfg);
+  for (const candidate of absolute) {
     try {
       const info = await stat(candidate);
       if (info.isFile()) return candidate;
     } catch {
-      /* 继续尝试下一个候选 */
+      tried.push(candidate);
     }
   }
-  fail("找不到可用的 Python。请安装 Python 3 与 python-docx，或在配置中填写 pythonPath。");
+  for (const candidate of await scanRuntimePythons()) return candidate;
+  const names = process.platform === "win32" ? ["python.exe", "python3.exe", "py.exe"] : ["python3", "python"];
+  for (const command of names) {
+    if (await commandExists(command)) return command;
+    tried.push(command + "（PATH 中未找到）");
+  }
+  fail(
+    "找不到可用的 Python 3。docx 解析依赖 Python 与 python-docx。已尝试：" +
+      tried.join("；") +
+      "。请在插件配置中填写 pythonPath 指向可用的 python.exe。",
+  );
 }
 
 function packageFile(relative) {
@@ -365,12 +410,35 @@ async function extractSourceText(cfg, filePath, ext, imagesDir = "") {
     const script = packageFile("python/extract_text.py");
     const args = [script, "--file", filePath];
     if (imagesDir) args.push("--images-dir", imagesDir);
-    const { stdout } = await execFileAsync(python, args, {
-      timeout: 120000,
-      maxBuffer: 16 * 1024 * 1024,
-      encoding: "utf8",
-      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
-    });
+    if (imagesDir) await mkdir(imagesDir, { recursive: true });
+    let stdout;
+    try {
+      ({ stdout } = await execFileAsync(python, args, {
+        timeout: 120000,
+        maxBuffer: 16 * 1024 * 1024,
+        encoding: "utf8",
+        env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+      }));
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        fail(
+          "未找到 Python 可执行文件：" +
+            python +
+            "。请在插件配置中填写 pythonPath，或确认 DSH 自带运行时完整。",
+        );
+      }
+      const detail = String((error && error.stderr) || "").trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" ");
+      fail(
+        "docx 解析失败（" +
+          ((error && (error.code || error.signal)) || "未知错误") +
+          "）：" +
+          (detail || (error && error.message) || "无输出") +
+          "。python=" +
+          python +
+          "，script=" +
+          script,
+      );
+    }
     const line = stdout
       .split(/\r?\n/)
       .reverse()

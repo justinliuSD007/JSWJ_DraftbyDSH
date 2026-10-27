@@ -272,7 +272,20 @@ C:\Users\LiuHanxuan\Downloads\Github_PAT for JSWJ_DraftbyDSH.txt
 - 安装指南节点：`Xi2JwTgwjinj8KkslupcbhTznWh`
 - 父节点：`DiKCwz21ciRpkkkAMNoc4WyTnOf`
 
-优先更新现有节点，不要每次新建重复文档。若要重新导入 docx：
+安装指南节点：`V6QywIchSiCLJvkJM4scwZ0ynJW`（objToken `LFM6dD94joai2jxRxpFceyAUnyb`，位于首页下）。
+
+**就地修改，不要重建文档。** 用户已在指南中内嵌了安装器文件块，重建会丢失。修改方式：
+
+- 改文字：`PATCH /docx/v1/documents/{doc}/blocks/{block_id}`，body 用 `update_text_elements`
+- 删段落：`DELETE .../blocks/{doc}/children/batch_delete`，按 `start_index`/`end_index` 定位
+- 加段落：`POST .../blocks/{doc}/children`，带 `index` 指定插入位置
+- 定位块：`GET .../blocks?page_size=500`，按 root block 的 `children` 顺序取下标
+
+内嵌文件属于 `block_type 33`（view）包 `block_type 23`（file），删除前先确认不是用户加的文件卡片。
+
+只有在节点被删除或需要换位置时才重新创建；重建后须同步更新市场索引 `homepage` 与仓库 README 的链接。
+
+若要重新导入 docx：
 
 1. 上传 docx 到云空间。
 2. 导入为 docx。

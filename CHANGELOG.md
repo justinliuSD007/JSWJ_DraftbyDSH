@@ -1,5 +1,17 @@
 # 变更记录
 
+## 0.7.0-beta.5 — 2026-10-27
+
+第五版测试发布（Pre-release）。修复上传参考资料时的 Python 解析失败。
+
+### 修复
+
+- 上传 docx 参考资料时报 `Command failed: python.exe ...`：原实现把 PATH 上的 `python.exe` 直接交给执行器，未做存在性检查，缺失时只抛出无上下文的错误。
+- 现在会依次尝试：配置项 `pythonPath`、环境变量 `JSWJ_PYTHON`、DSH 运行时自带 Python、`dsh-runtimes` 下任意运行时的 Python、PATH 中的 `python.exe`/`python3.exe`/`py.exe`。
+- 全部找不到时，错误信息列出已尝试的位置，并提示填写 `pythonPath`。
+- 解析脚本执行失败时，错误信息附带 stderr 末几行、退出码与所用 Python 路径。
+- 解析前先创建图片输出目录，避免目录不存在导致的失败。
+
 ## 0.7.0-beta.4 — 2026-10-27
 
 第四版测试发布（Pre-release）。安装器改为图形界面，并修复一组安装期缺陷。

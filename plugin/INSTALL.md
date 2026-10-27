@@ -1,6 +1,6 @@
 # 技术文件起草（JSWJ_DraftbyDSH）安装指南
 
-适用版本：`0.7.0-beta.4` ｜ 约 2 分钟 ｜ 全程图形界面，无需命令行
+适用版本：`0.7.0-beta.5` ｜ 约 2 分钟 ｜ 全程图形界面，无需命令行
 
 ## 先看结论
 
@@ -19,7 +19,7 @@
 | 系统 | Windows 10 或 11，自带 .NET Framework 4.8，无需另装 |
 | DSH | 已安装，且**至少启动过一次**（要先生成 profile 目录） |
 | 飞书应用 | 「GO秘」的 `appId` 与 `appSecret`，由管理员提供 |
-| 安装包 | `JSWJ-Draft-Setup-0.7.0-beta.4.exe`，约 1 MB |
+| 安装包 | `JSWJ-Draft-Setup-0.7.0-beta.5.exe`，约 1 MB |
 
 不需要 Node、不需要 Python、不需要 7-Zip、不需要管理员权限。
 
