@@ -30,13 +30,13 @@ description: 发布、打包、安装和更新「技术文件起草（JSWJ_Draft
 | 变更记录 | `D:\公司资料\Agent\业务流自动化\repo\CHANGELOG.md` |
 | GitHub 仓库 | `https://github.com/justinliuSD007/JSWJ_DraftbyDSH` |
 | 飞书空间 | `技术资料起草库`，space_id `7698962670346636559` |
-| 安装指南节点 | `XMSJwL3BoipCQGkiEjxc0bRlnZb` |
+| 安装指南节点 | `Xi2JwTgwjinj8KkslupcbhTznWh` |
 | 安装指南父节点 | `DiKCwz21ciRpkkkAMNoc4WyTnOf` |
 
 当前安装指南地址：
 
 ```text
-https://govy.feishu.cn/wiki/XMSJwL3BoipCQGkiEjxc0bRlnZb
+https://govy.feishu.cn/wiki/Xi2JwTgwjinj8KkslupcbhTznWh
 ```
 
 ## 一、判断当前任务
@@ -269,7 +269,7 @@ C:\Users\LiuHanxuan\Downloads\Github_PAT for JSWJ_DraftbyDSH.txt
 
 飞书：
 
-- 安装指南节点：`XMSJwL3BoipCQGkiEjxc0bRlnZb`
+- 安装指南节点：`Xi2JwTgwjinj8KkslupcbhTznWh`
 - 父节点：`DiKCwz21ciRpkkkAMNoc4WyTnOf`
 
 优先更新现有节点，不要每次新建重复文档。若要重新导入 docx：
