@@ -1,6 +1,6 @@
 # 技术文件起草（JSWJ_DraftbyDSH）安装指南
 
-适用版本：`0.7.0-beta.1` ｜ 一键安装 ｜ 约 2 分钟
+适用版本：`0.7.0-beta.2` ｜ 一键安装 ｜ 约 2 分钟
 
 ![一键安装流程](INSTALL.assets/install-oneclick.png)
 
@@ -24,7 +24,7 @@
 
 - 一台 Windows 10/11 电脑，DSH 桌面端能正常打开。
 - 飞书应用「GO秘」的 `appId` 和 `appSecret`，向应用管理员获取。
-- 安装器文件：`JSWJ-Draft-Setup-0.7.0-beta.1.exe`。
+- 安装器文件：`JSWJ-Draft-Setup-0.7.0-beta.2.exe`。
 
 不需要：
 
@@ -44,16 +44,16 @@
 从安装指南附件或 GitHub Release 下载：
 
 ```text
-JSWJ-Draft-Setup-0.7.0-beta.1.exe
+JSWJ-Draft-Setup-0.7.0-beta.2.exe
 ```
 
 确认：
 
-- 文件名是 `JSWJ-Draft-Setup-0.7.0-beta.1.exe`
+- 文件名是 `JSWJ-Draft-Setup-0.7.0-beta.2.exe`
 - 文件大小约 1.1 MB
 - 是 `.exe`，不是 `.zip`
 
-如果下载到的是 `jswj-draft-plugin-0.7.0-beta.1.zip`，那是手动安装包，不是一键安装器。
+如果下载到的是 `jswj-draft-plugin-0.7.0-beta.2.zip`，那是手动安装包，不是一键安装器。
 
 ### 第 2 步：完全退出 DSH
 
@@ -78,7 +78,7 @@ JSWJ-Draft-Setup-0.7.0-beta.1.exe
 双击：
 
 ```text
-JSWJ-Draft-Setup-0.7.0-beta.1.exe
+JSWJ-Draft-Setup-0.7.0-beta.2.exe
 ```
 
 可能出现的系统提示：
@@ -95,7 +95,7 @@ JSWJ-Draft-Setup-0.7.0-beta.1.exe
 
 1. 点「Cancel」
 2. 删除这个文件
-3. 重新下载 `JSWJ-Draft-Setup-0.7.0-beta.1.exe`
+3. 重新下载 `JSWJ-Draft-Setup-0.7.0-beta.2.exe`
 
 ### 第 4 步：确认安装
 
@@ -216,7 +216,7 @@ JSWJ-Draft-Setup-0.7.0-beta.1.exe
 
 | 步骤 | 你要做什么 | 成功标志 | 失败怎么办 |
 |---|---|---|---|
-| 1 下载 | 下载 `JSWJ-Draft-Setup-0.7.0-beta.1.exe` | 文件名、大小正确 | 重新下载，不要用 zip 代替 |
+| 1 下载 | 下载 `JSWJ-Draft-Setup-0.7.0-beta.2.exe` | 文件名、大小正确 | 重新下载，不要用 zip 代替 |
 | 2 退出 DSH | 完全关闭 DSH，包括托盘 | 任务管理器没有 DSH | 结束进程后重试 |
 | 3 双击 | 双击 exe；SmartScreen 选「仍要运行」 | 出现安装确认窗口 | 弹解压路径说明文件旧，重新下载 |
 | 4 确认 | 点「是 / 确定」 | 出现命令行窗口 | 点「是」不是「否」 |
@@ -238,7 +238,7 @@ JSWJ-Draft-Setup-0.7.0-beta.1.exe
 
 1. 点「Cancel」
 2. 删除当前 exe
-3. 重新下载 `JSWJ-Draft-Setup-0.7.0-beta.1.exe`
+3. 重新下载 `JSWJ-Draft-Setup-0.7.0-beta.2.exe`
 4. 正常安装器不会问解压路径，而是直接弹安装确认
 
 ### 2. `请先完全退出 DSH`
@@ -376,7 +376,7 @@ package.json.bak-<时间戳>
 下载：
 
 ```text
-jswj-draft-plugin-0.7.0-beta.1.zip
+jswj-draft-plugin-0.7.0-beta.2.zip
 ```
 
 解压到固定目录，例如：
