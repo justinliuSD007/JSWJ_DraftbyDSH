@@ -1,5 +1,22 @@
 # 变更记录
 
+## 0.7.0-beta.6 — 2026-10-27
+
+第六版测试发布。参考资料拆分为内容参考资料与模板文件；新增内置凭据的内部安装器。
+
+### 变更
+
+- 参考资料页拆成两块：内容参考资料（可多份，参考程度三档）与模板文件（可选，单份）。
+- 内容参考程度去掉「原样套模板」，保留参考写法、参考章节结构、背景资料。
+- 模板文件：不上传按默认 GY-F003 套用；上传后仅本次任务临时使用，不改默认配置。
+- 新增 `template.upload` 接口，只接受 .docx，存入 `~/.dsh/jswj-templates/<taskId>/`，带 taskId 时记入任务 `data.template`。
+- `jswj_render_docx` 新增 `templatePath`：路径无效时回退默认模板，并在结果中说明回退原因。
+
+### 分发
+
+- 公开版 `JSWJ-Draft-Setup-0.7.0-beta.6.exe`：安装时手填凭据，随 GitHub Release 发布。
+- 内部版 `JSWJ-Draft-Setup-0.7.0-beta.6-internal.exe`：内置凭据，安装无需填写，只通过知识库分发，不进 Git 仓库、不上 Release。
+
 ## 0.7.0-beta.5 — 2026-10-27
 
 第五版测试发布（Pre-release）。修复上传参考资料时的 Python 解析失败。

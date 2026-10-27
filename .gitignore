@@ -13,3 +13,8 @@ appSecret*
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 内置凭据的构建产物：只在本机生成，禁止提交
+tools/creds.local.json
+tools/Setup.Creds.cs
+tools/Setup-bundled.exe

@@ -10,6 +10,15 @@ using System.Windows.Forms;
 
 namespace JswjSetup
 {
+#if BUNDLED
+    /** 构建时注入的内置凭据；仅在带凭据的专用安装器中编译进来。 */
+    internal static class BundledCreds
+    {
+        public const string AppId = SetupCreds.AppId;
+        public const string AppSecret = SetupCreds.AppSecret;
+    }
+#endif
+
     internal static class Program
     {
         [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -483,15 +492,34 @@ namespace JswjSetup
             note.SetBounds(24, 54, 500, 34);
             Controls.Add(note);
 
-            Controls.Add(LabelAt("feishu appId", 24, 98));
+            var appIdLabel = LabelAt("feishu appId", 24, 98);
+            Controls.Add(appIdLabel);
             _appId.SetBounds(24, 120, 500, 26);
             _appId.Text = "cli_";
             Controls.Add(_appId);
 
-            Controls.Add(LabelAt("appSecret", 24, 158));
+            var secretLabel = LabelAt("appSecret", 24, 158);
+            Controls.Add(secretLabel);
             _appSecret.SetBounds(24, 180, 500, 26);
             _appSecret.UseSystemPasswordChar = true;
             Controls.Add(_appSecret);
+
+#if BUNDLED
+            // 内置凭据版本：不显示输入框，安装即完成。
+            appIdLabel.Visible = false;
+            secretLabel.Visible = false;
+            _appId.Visible = false;
+            _appSecret.Visible = false;
+            _appId.Text = BundledCreds.AppId;
+            _appSecret.Text = BundledCreds.AppSecret;
+            note.Text = "内置凭据已配置，直接点「开始安装」即可。安装前请完全退出 DSH。";
+            _install.Top -= 120;
+            _cancel.Top -= 120;
+            _uninstall.Top -= 120;
+            _status.Top -= 120;
+            _log.Top -= 120;
+            _log.Height += 120;
+#endif
 
             _install.Text = "开始安装";
             _install.SetBounds(24, 222, 150, 36);

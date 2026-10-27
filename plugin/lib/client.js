@@ -596,6 +596,10 @@ window.__ModuleLoader__.load({
         background: "背景资料：只取事实、数据与约束，重新起草，不照搬结构",
       };
       const sources = task.data?.sources || [];
+      const template = task.data?.template;
+      const templateLine = template && template.path
+        ? `本次任务模板：${template.name || ""}（路径 ${template.path}）。渲染时把该路径传给 jswj_render_docx 的 templatePath，不要用默认模板。`
+        : "本次任务未上传模板，按默认 GY-F003 模板套用。";
       const sourceLines = sources
         .map(
           (source, index) =>
@@ -608,6 +612,7 @@ window.__ModuleLoader__.load({
         `【JSWJ 任务 ${task.id} · 第 ${step} 步：${names[step - 1]}】`,
         "请加载 jswj-draftbydsh 技能，先调用 jswj_task_get 读取该任务，再按任务数据完成这一步。",
         sourceLines ? `参考资料使用程度：\n${sourceLines}` : "",
+        templateLine,
         extra || "",
         "完成后必须调用 jswj_task_update 把结果写回任务（generation / selfcheck / revision / review.issues），然后回到「技术文件起草」页面点刷新继续。",
       ]
@@ -1483,7 +1488,6 @@ window.__ModuleLoader__.load({
             };
             const okCount = form.sources.filter((x) => x.ok).length;
             const SOURCE_MODES = [
-              ["mirror", "原样套模板（内容不改，仅排版）"],
               ["template", "参考写法（结构 / 行文 / 图片，内容重写）"],
               ["structure", "参考章节结构（沿用章节层级，正文重写）"],
               ["background", "背景资料（重新起草）"],
@@ -1558,7 +1562,40 @@ window.__ModuleLoader__.load({
                       ),
                     ),
               ),
-              h("div", { style: s.note }, "门禁 G3：至少一份资料解析成功；解析失败的要显式剔除。每份资料可选参考程度：原样套模板（内容不改，仅排版）、参考写法（结构/行文/图片，内容重写）、参考章节结构（沿用章节层级）、背景资料（重新起草）。可以贴多份资料、每份单独选参考程度；但「原样套模板」最多只能选一份；已有定稿、只需套版式时选它，需要按新主题改写时选「参考写法」。"),
+              h("div", { style: s.note }, "内容参考资料：可多份，每份单独选参考程度——参考写法（结构/行文/图片，内容重写）、参考章节结构（沿用章节层级，正文重写）、背景资料（只取事实与约束，重新起草）。门禁 G3：至少一份解析成功；解析失败的须显式剔除。"),
+              h("div", { style: { ...s.note, marginTop: 10 } }, "模板文件（可选）：不上传则按默认 GY-F003 模板套用；上传后仅本次任务临时使用该模板，不改默认配置。"),
+              h(
+                "div",
+                { style: { display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" } },
+                h("input", {
+                  type: "file",
+                  accept: ".docx",
+                  disabled: busy,
+                  onChange: async (event) => {
+                    const file = event.target.files && event.target.files[0];
+                    if (!file) return;
+                    if (!/\.docx$/i.test(file.name)) {
+                      set({ error: "模板文件只支持 .docx" });
+                      return;
+                    }
+                    try {
+                      set({ error: "" });
+                      const dataBase64 = await fileToBase64(file);
+                      const taskId = (props && props.task && props.task.id) || "";
+                      const uploaded = await call("template.upload", { name: file.name, dataBase64, taskId });
+                      set({ template: uploaded });
+                    } catch (error) {
+                      set({ error: String((error && error.message) || error) });
+                    }
+                  },
+                }),
+                form.template
+                  ? h("span", { style: s.mono }, "已选模板：" + form.template.name)
+                  : h("span", { style: s.mono }, "未上传，将使用默认 GY-F003 模板"),
+                form.template
+                  ? h("button", { style: s.btnGhost, onClick: () => set({ template: null }) }, "清除模板")
+                  : null,
+              ),
               h(
                 "div",
                 { style: s.footer },

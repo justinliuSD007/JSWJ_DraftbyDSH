@@ -873,6 +873,30 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         };
         break;
       }
+      case "template.upload": {
+        const tplName = String(body.name ?? "自定义模板.docx").trim();
+        const tplExt = extname(tplName).toLowerCase();
+        if (tplExt !== ".docx") throw new Error("模板文件只支持 .docx");
+        const tplRaw = String(body.dataBase64 ?? "");
+        if (!tplRaw) throw new Error("缺少文件内容");
+        const tplBuffer = Buffer.from(tplRaw, "base64");
+        if (tplBuffer.length === 0) throw new Error("文件内容为空");
+        if (tplBuffer.length > MAX_UPLOAD_BYTES) throw new Error("模板文件超过 20 MB");
+
+        const tplTaskId = String(body.taskId ?? "common");
+        const tplDir = join(homedir(), ".dsh", "jswj-templates", tplTaskId);
+        await mkdir(tplDir, { recursive: true });
+        const tplPath = join(tplDir, `${safeName(tplName, "模板")}.docx`);
+        await writeFile(tplPath, tplBuffer);
+
+        if (body.taskId) {
+          await patchTask(String(body.taskId), {
+            data: { template: { name: tplName, path: tplPath, digest: bufferHash(tplBuffer) } },
+          });
+        }
+        value = { name: tplName, path: tplPath, size: tplBuffer.length };
+        break;
+      }
       case "source.upload": {
         const name = String(body.name ?? "上传资料").trim();
         const ext = extname(name).toLowerCase();
@@ -1816,6 +1840,10 @@ function apply(ctx, config = {}) {
         revisionNote: { type: "string", description: "修订说明，默认「1 期方案初版」" },
         date: { type: "string", description: "修订日期，默认当天（YYYY.MM.DD）" },
         outPath: { type: "string", description: "输出文件绝对路径；省略则写入配置的 outputDir" },
+        templatePath: {
+          type: "string",
+          description: "本次任务要套用的模板 .docx 绝对路径；省略则使用默认 GY-F003 模板。任务中上传过模板时，先用 jswj_task_get 取 data.template.path 再传入",
+        },
       },
       async execute(args) {
         const title = String(args.title ?? "").trim();
@@ -1843,11 +1871,26 @@ function apply(ctx, config = {}) {
 
         const baseDir = String(args.baseDir ?? "").trim() || (args.sourcePath ? dirname(String(args.sourcePath)) : process.cwd());
 
-        const template = packageFile("template/GY-F003-cleaned.docx");
+        let template = packageFile("template/GY-F003-cleaned.docx");
+        let templateSource = "默认 GY-F003 模板";
+        let templateNotice = "";
+        const requestedTemplate = String(args.templatePath ?? "").trim();
+        if (requestedTemplate) {
+          if (!isAbsolute(requestedTemplate)) fail(`templatePath 需要绝对路径，收到：${requestedTemplate}`);
+          try {
+            const info = await stat(requestedTemplate);
+            if (!info.isFile()) throw new Error("不是文件");
+            if (extname(requestedTemplate).toLowerCase() !== ".docx") throw new Error("模板必须为 .docx");
+            template = requestedTemplate;
+            templateSource = `本次任务模板：${basename(requestedTemplate)}`;
+          } catch (error) {
+            templateNotice = `指定模板不可用（${requestedTemplate}：${error.message}），已回退默认模板。`;
+          }
+        }
         try {
           await stat(template);
         } catch {
-          fail(`GY-F003 模板缺失：${template}`);
+          fail(`模板缺失：${template}`);
         }
 
         const python = await pickPython(cfg);
