@@ -15,12 +15,58 @@ const inject = ["tools", "webServer"];
 const API = "https://open.feishu.cn/open-apis";
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
-let defineTool;
+/**
+ * defineTool 兜底实现。
+ *
+ * 宿主包 @deepseek-ai/dsh-tools 只在应用包内可解析，外部插件通常 import 不到。
+ * 早期版本回退为恒等函数，导致 parameters 以「属性表」原样注册，
+ * 模型接口会报 Invalid schema ... got 'type: null'。
+ * 这里按宿主语义把属性表编译成 JSON Schema，保证注册结果与宿主一致。
+ */
+function compileParameters(spec = {}) {
+  const properties = {};
+  const required = [];
+  for (const [key, value] of Object.entries(spec)) {
+    if (value && typeof value === "object" && value.required === true) {
+      const { required: _ignored, ...rest } = value;
+      properties[key] = rest;
+      required.push(key);
+    } else {
+      properties[key] = value;
+    }
+  }
+  return { type: "object", properties, ...(required.length > 0 ? { required } : {}) };
+}
+
+function fallbackDefineTool(options) {
+  return {
+    name: options.name,
+    description: options.description,
+    parameters: compileParameters(options.parameters),
+    output: {
+      schema:
+        options.output && options.output.schema
+          ? options.output.schema
+          : { type: "object", properties: {}, additionalProperties: false },
+      render:
+        options.output && typeof options.output.render === "function"
+          ? options.output.render
+          : (_args, value) => [
+              { type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) },
+            ],
+    },
+    async execute(args, exec) {
+      return options.execute(args, exec);
+    },
+  };
+}
+
+let defineTool = fallbackDefineTool;
 try {
-  ({ defineTool } = await import("@deepseek-ai/dsh-tools"));
+  const host = await import("@deepseek-ai/dsh-tools");
+  if (host && typeof host.defineTool === "function") defineTool = host.defineTool;
 } catch {
-  // 独立测试环境没有宿主包：defineTool 只是类型辅助，退化为恒等函数。
-  defineTool = (spec) => spec;
+  // 宿主包不可解析时使用本地编译实现，语义保持一致。
 }
 
 const { stat, mkdir, writeFile, unlink, readFile, readdir, copyFile, rm } = await import("node:fs/promises");
@@ -118,7 +164,7 @@ const objectSchema = (properties) => ({ type: "object", additionalProperties: fa
 const str = (description, required = false) => ({
   type: "string",
   description,
-  ...(required ? { required: true } : {}),
+  ...(required ? { } : {}),
 });
 const nullableStr = (description) => ({ type: "string", description });
 
@@ -1422,7 +1468,7 @@ function apply(ctx, config = {}) {
       },
       output: {
         schema: objectSchema({
-          ok: { type: "boolean", description: "配置是否可用", required: true },
+          ok: { type: "boolean", description: "配置是否可用" },
           spaceId: nullableStr("知识空间 ID"),
           spaceName: nullableStr("知识空间名称"),
           rootNodes: {
@@ -1520,7 +1566,7 @@ function apply(ctx, config = {}) {
       description:
         "读取飞书云文档的纯文本正文。接受 wiki 链接、docx 链接、wiki 节点 token 或文档 token。用于读取参考资料、模板、受审文件。",
       parameters: {
-        target: { type: "string", required: true, description: "wiki 链接、docx 链接、节点 token 或文档 token" },
+        target: { type: "string", description: "wiki 链接、docx 链接、节点 token 或文档 token" },
       },
       async execute(args) {
         const token = pickToken(args.target);
@@ -1568,7 +1614,7 @@ function apply(ctx, config = {}) {
         "在飞书知识库指定父节点下新建一个在线文档节点（docx），返回新节点 token。用于按目录规则创建起草目录、预审任务目录。",
       parameters: {
         parent: { type: "string", description: "父节点 token 或 wiki 链接；省略则用配置中的 rootToken" },
-        title: { type: "string", required: true, description: "新节点标题（同时作为文档名）" },
+        title: { type: "string", description: "新节点标题（同时作为文档名）" },
       },
       async execute(args) {
         const title = String(args.title ?? "").trim();
@@ -1608,8 +1654,8 @@ function apply(ctx, config = {}) {
       description:
         "向飞书在线文档末尾追加内容。支持简单 Markdown：#/##/### 标题、- 列表、1. 编号、> 引用、--- 分隔线，其余按段落。用于写入指南、预审意见、任务说明；正式出稿请用 jswj_render_docx + jswj_publish_docx。",
       parameters: {
-        target: { type: "string", required: true, description: "wiki 链接、docx 链接、节点 token 或文档 token" },
-        content: { type: "string", required: true, description: "要追加的内容，支持少量 Markdown 语法" },
+        target: { type: "string", description: "wiki 链接、docx 链接、节点 token 或文档 token" },
+        content: { type: "string", description: "要追加的内容，支持少量 Markdown 语法" },
       },
       async execute(args) {
         const token = pickToken(args.target);
@@ -1691,7 +1737,7 @@ function apply(ctx, config = {}) {
         markdown: { type: "string", description: "完整 Markdown 正文；一级标题作为文档标题，二至四级标题映射为正文章节。与 sourcePath 二选一" },
         sourcePath: { type: "string", description: "本地 Markdown 文件绝对路径；与 markdown 二选一，长文档建议先写文件再传路径" },
         baseDir: { type: "string", description: "相对图片路径的基准目录；省略时用 sourcePath 所在目录，否则用工作目录" },
-        title: { type: "string", required: true, description: "文件名称，写入封面标题" },
+        title: { type: "string", description: "文件名称，写入封面标题" },
         classification: { type: "string", description: "密级，如 L2 重要/秘密；默认 L2" },
         author: { type: "string", description: "编制人，如「张三 2026.10.22」" },
         checker: { type: "string", description: "校对" },
@@ -1826,7 +1872,7 @@ function apply(ctx, config = {}) {
       description:
         "把本地 .docx 上传为飞书知识库节点（保留 Word 原文件，可在知识库中下载）。可指定父节点；省略时用配置的 draftRootToken。上传后自动移入知识库并轮询任务结果。",
       parameters: {
-        filePath: { type: "string", required: true, description: "本地 .docx 绝对路径，通常来自 jswj_render_docx" },
+        filePath: { type: "string", description: "本地 .docx 绝对路径，通常来自 jswj_render_docx" },
         parent: { type: "string", description: "目标父节点 token 或 wiki 链接；省略则用配置的 draftRootToken" },
         name: { type: "string", description: "知识库中的文件名；省略则用本地文件名" },
       },
@@ -1945,7 +1991,7 @@ function apply(ctx, config = {}) {
       description:
         "读取 JSWJ 任务的状态（步骤、基本信息、资料、大纲、生成/自检/修订/出稿结果）。页面发起的任务会用任务号指代，助手执行前后都应先读任务。",
       parameters: {
-        taskId: { type: "string", required: true, description: "任务号，形如 DOC-20261022-001 或 REV-20261022-001" },
+        taskId: { type: "string", description: "任务号，形如 DOC-20261022-001 或 REV-20261022-001" },
       },
       async execute(args) {
         const taskId = String(args.taskId ?? "").trim();
@@ -1965,10 +2011,10 @@ function apply(ctx, config = {}) {
       description:
         "更新 JSWJ 任务状态。patch 是 JSON 对象字符串，可包含 data（与现有 data 浅合并）、step、status。助手完成生成、自检、预审、修订后，用本工具把结果写回任务，页面据此推进。",
       parameters: {
-        taskId: { type: "string", required: true, description: "任务号" },
+        taskId: { type: "string", description: "任务号" },
         patch: {
           type: "string",
-          required: true,
+          
           description:
             'JSON 对象字符串，例如 {"data":{"generation":{"status":"done","note":"已生成 8 章"}}} 或 {"data":{"selfcheck":{"status":"clean","items":[]}}}',
         },
