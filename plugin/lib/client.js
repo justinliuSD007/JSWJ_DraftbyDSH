@@ -1271,7 +1271,7 @@ window.__ModuleLoader__.load({
                 h(
                   "a",
                   {
-                    href: "https://govy.feishu.cn/wiki/BA6bweX87iEgnEkbRR2cKKMznTd",
+                    href: "https://govy.feishu.cn/wiki/XMSJwL3BoipCQGkiEjxc0bRlnZb",
                     target: "_blank",
                     rel: "noreferrer",
                     style: { ...s.btnSecondary, display: "inline-flex", alignItems: "center", textDecoration: "none" },
