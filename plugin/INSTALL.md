@@ -19,7 +19,7 @@
 | 系统 | Windows 10 或 11，自带 .NET Framework 4.8，无需另装 |
 | DSH | 已安装，且**至少启动过一次**（要先生成 profile 目录） |
 | 飞书应用 | 「GO秘」的 `appId` 与 `appSecret`，由管理员提供 |
-| 安装包 | `JSWJ-Draft-Setup-0.7.0-beta.4.exe`，约 1.5 MB |
+| 安装包 | `JSWJ-Draft-Setup-0.7.0-beta.4.exe`，约 1 MB |
 
 不需要 Node、不需要 Python、不需要 7-Zip、不需要管理员权限。
 
@@ -90,7 +90,7 @@ Windows 提示「未知发布者」时，点「更多信息」→「仍要运行
 **双击没反应**
 
 - 检查是否被杀毒软件拦截，加入信任后重试。
-- 确认是 `.exe` 文件，不是 zip。
+- 确认下载的是 `.exe` 安装器，且文件大小约 1 MB。
 
 **提示「未找到 DSH profile」**
 
@@ -109,10 +109,6 @@ DSH 还没启动过。先打开一次 DSH，任意建一个会话，再退出重
 **自检报凭据错误**
 
 重新运行安装器，重新填写 `appId` / `appSecret`。安装器会覆盖旧配置。
-
-**想手工安装（不推荐）**
-
-解压 `jswj-draft-plugin-0.7.0-beta.4.zip`，双击其中的 `install.cmd`。没有 `Setup.exe` 时会回退到命令行脚本，按提示输入凭据。
 
 ---
 
