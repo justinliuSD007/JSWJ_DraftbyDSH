@@ -38,6 +38,16 @@ window.__ModuleLoader__.load({
     const FONT = '"HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
     // 主按钮固定品牌紫：部分主题里 --dsw-alias-brand-primary 是白色，不能作为填充色。
     const PRIMARY = BRAND;
+    const PANEL_MS = 240;
+    const PANEL_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+
+    function prefersReducedMotion() {
+      try {
+        return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+      } catch {
+        return false;
+      }
+    }
 
     const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "成稿确认", "出稿"];
     const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
@@ -91,7 +101,8 @@ window.__ModuleLoader__.load({
         flex: "1 1 auto",
         height: "100%",
         minHeight: 0,
-        overflow: "hidden",
+        overflowY: "auto",
+        overflowX: "hidden",
         background: C.base,
         color: C.text,
         fontFamily: FONT,
@@ -461,6 +472,248 @@ window.__ModuleLoader__.load({
         lineHeight: 1.7,
         marginTop: 12,
       },
+      evidencePanel: {
+        position: "fixed",
+        top: 0,
+        right: 0,
+        width: "min(42vw, 820px)",
+        minWidth: 360,
+        height: "100vh",
+        maxHeight: "100vh",
+        overflow: "hidden",
+        boxSizing: "border-box",
+        background: "var(--dsw-alias-bg-base, #fff)",
+        borderLeft: `1px solid ${BORDER}`,
+        boxShadow: "-12px 0 32px rgba(15,18,35,0.16)",
+        display: "flex",
+        flexDirection: "column",
+        zIndex: 9999,
+      },
+      evidenceHead: {
+        flex: "0 0 auto",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "12px 16px",
+        borderBottom: `1px solid ${BORDER}`,
+        background: C.layer1,
+        boxShadow: "0 1px 2px rgba(15,18,35,0.06)",
+      },
+      evidenceTitle: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: 650, color: C.text, lineHeight: 1.35 },
+      evidenceMeta: { marginTop: 3, fontFamily: MONO, fontSize: 11, color: C.sub },
+      btnClose: {
+        height: 32,
+        minWidth: 64,
+        minHeight: 32,
+        padding: "0 12px",
+        borderRadius: 7,
+        border: `1px solid ${BORDER}`,
+        background: "var(--dsw-alias-bg-base, #fff)",
+        color: C.text,
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: "inherit",
+        cursor: "pointer",
+        flex: "0 0 auto",
+        whiteSpace: "nowrap",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxSizing: "border-box",
+      },
+      btnCloseHover: {
+        background: C.layer2,
+        borderColor: C.text,
+        boxShadow: "0 1px 4px rgba(15,18,35,0.16)",
+      },
+      evidenceBody: {
+        flex: "1 1 auto",
+        minHeight: 0,
+        overflow: "hidden",
+        padding: "12px 14px 18px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        boxSizing: "border-box",
+      },
+      evidenceDoc: {
+        flex: "1 1 auto",
+        minHeight: 0,
+        overflow: "auto",
+        border: `1px solid ${BORDER}`,
+        borderRadius: 10,
+        background: "#fff",
+        padding: "8px 10px",
+        position: "relative",
+        zIndex: 0,
+        isolation: "isolate",
+      },
+      evidenceFigure: {
+        position: "relative",
+        flex: "1 1 auto",
+        minHeight: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "auto",
+        padding: 8,
+      },
+      evidenceShot: {
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minHeight: 240,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      },
+      evidenceImg: { width: "100%", height: "100%", objectFit: "contain", display: "block" },
+      evidenceRing: {
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        width: "60%",
+        aspectRatio: "1 / 1",
+        transform: "translate(-50%, -50%)",
+        border: "3px solid red",
+        borderRadius: "50%",
+        boxSizing: "border-box",
+        pointerEvents: "none",
+      },
+      issueList: { display: "flex", flexDirection: "column", gap: 10 },
+      issueCard: {
+        border: `1px solid ${BORDER}`,
+        background: C.layer1,
+        borderRadius: 10,
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        color: C.text,
+        cursor: "pointer",
+        transition: "background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
+      },
+      issueCardActive: {
+        borderColor: PRIMARY,
+        background: C.layer2,
+        boxShadow: `inset 3px 0 0 ${PRIMARY}`,
+      },
+      issueCardTop: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 },
+      severityBadge: {
+        display: "inline-flex",
+        alignItems: "center",
+        height: 20,
+        padding: "0 8px",
+        borderRadius: 10,
+        fontSize: 11,
+        fontWeight: 650,
+        flex: "0 0 auto",
+      },
+      severityBadgeSevere: { background: "rgba(213,73,65,0.12)", color: C.err },
+      severityBadgeNormal: { background: C.layer2, color: C.sub },
+      issueLocation: {
+        width: "100%",
+        fontFamily: MONO,
+        fontSize: 11.5,
+        color: C.sub,
+        textAlign: "right",
+        minWidth: 0,
+        overflowWrap: "anywhere",
+      },
+      issueDetail: { display: "flex", flexDirection: "column", gap: 8 },
+      issueDetailRow: { display: "flex", alignItems: "flex-start", gap: 10 },
+      issueLabel: {
+        flex: "0 0 3.2em",
+        textAlign: "right",
+        whiteSpace: "nowrap",
+        fontSize: 12,
+        fontWeight: 600,
+        color: C.sub,
+        letterSpacing: "0.05em",
+        lineHeight: 1.7,
+      },
+      issueProblem: { flex: "1 1 auto", minWidth: 0, fontSize: 13, color: C.text, lineHeight: 1.7, overflowWrap: "anywhere" },
+      issueBasis: { flex: "1 1 auto", minWidth: 0, fontSize: 12, color: C.sub, lineHeight: 1.7, overflowWrap: "anywhere" },
+      issueSuggestion: { flex: "1 1 auto", minWidth: 0, fontSize: 12, color: C.brand, lineHeight: 1.7, overflowWrap: "anywhere" },
+      drawerIssue: {
+        flex: "0 0 auto",
+        width: "100%",
+        maxWidth: 720,
+        margin: "0 auto",
+        maxHeight: "24vh",
+        overflowY: "auto",
+        padding: "12px 16px 10px",
+        borderBottom: `1px solid ${BORDER_SOFT}`,
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      },
+      drawerIssueLabel: {
+        flex: "0 0 3.2em",
+        textAlign: "right",
+        whiteSpace: "nowrap",
+        fontSize: 12,
+        fontWeight: 600,
+        color: C.sub,
+        letterSpacing: "0.05em",
+        lineHeight: 1.7,
+      },
+      drawerProblem: { flex: "1 1 auto", minWidth: 0, fontSize: 14, color: C.text, lineHeight: 1.7, overflowWrap: "anywhere" },
+      drawerBasis: { flex: "1 1 auto", minWidth: 0, fontSize: 13, color: C.sub, lineHeight: 1.7, overflowWrap: "anywhere" },
+      drawerSuggestion: { flex: "1 1 auto", minWidth: 0, fontSize: 13, color: C.brand, lineHeight: 1.7, overflowWrap: "anywhere" },
+      hintBar: {
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "nowrap",
+        gap: 8,
+        height: 32,
+        minHeight: 32,
+        maxHeight: 32,
+        boxSizing: "border-box",
+        padding: "4px 10px",
+        fontSize: 12,
+        lineHeight: "24px",
+        flex: "0 0 auto",
+        overflow: "hidden",
+        marginBottom: -4,
+        transition: "background-color 120ms ease, box-shadow 120ms ease",
+      },
+      hintPlain: { background: "transparent", boxShadow: "none", borderRadius: 0 },
+      hintWarn: {
+        background: "rgba(199,120,0,0.10)",
+        boxShadow: "inset 0 0 0 1px rgba(199,120,0,0.24)",
+        borderRadius: 8,
+      },
+      hintFail: {
+        background: "rgba(213,73,65,0.08)",
+        boxShadow: "inset 0 0 0 1px rgba(213,73,65,0.28)",
+        borderRadius: 8,
+      },
+      hintLabel: {
+        flex: "1 1 auto",
+        minWidth: 0,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        fontSize: 12,
+        letterSpacing: "0.02em",
+        lineHeight: "24px",
+      },
+      matchNav: { display: "flex", alignItems: "center", gap: 6, marginLeft: "auto", flex: "0 0 auto" },
+      matchCount: { fontSize: 11.5, color: C.sub, whiteSpace: "nowrap" },
+      matchNavBtn: {
+        height: 24,
+        padding: "0 8px",
+        borderRadius: 6,
+        border: `1px solid ${BORDER}`,
+        background: C.base,
+        color: C.text,
+        fontSize: 11.5,
+        fontFamily: "inherit",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      },
       link: { color: C.brand, textDecoration: "none", fontSize: 13 },
       chapter: {
         display: "grid",
@@ -587,6 +840,820 @@ window.__ModuleLoader__.load({
       document.body.removeChild(area);
     }
 
+    // ---------------------------------------------------------------- 证据回显
+    // 预审意见点开后，右侧抽屉显示受审文件原文或证据图片。
+    // 原件是 28 MB 级 docx，拉取与渲染都只做一次：同一任务的 Blob 与已渲染 HTML 存模块级 Map，
+    // 切换意见时复用，避免每次重新走 20 秒的 /api/jswj-file。
+
+    const DOCX_CACHE = new Map();
+    const DOCX_CACHE_LIMIT = 3;
+    const VENDOR_SCRIPTS = ["/api/jswj-vendor/jszip.min.js", "/api/jswj-vendor/docx-preview.min.js"];
+    let vendorPromise = null;
+    const vendorState = { status: "idle", error: "" };
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const el = document.createElement("script");
+        el.src = src;
+        el.async = false;
+        el.onload = () => resolve();
+        el.onerror = () => reject(new Error(`加载失败：${src}`));
+        document.head.appendChild(el);
+      });
+    }
+
+    function ensureVendor() {
+      if (vendorPromise) return vendorPromise;
+      vendorState.status = "loading";
+      vendorPromise = (async () => {
+        if (!window.JSZip) await loadScript(VENDOR_SCRIPTS[0]);
+        if (!window.docx) await loadScript(VENDOR_SCRIPTS[1]);
+        if (!window.JSZip || !window.docx) throw new Error("渲染组件未就绪");
+        vendorState.status = "ready";
+        return window.docx;
+      })().catch((error) => {
+        vendorState.status = "error";
+        vendorState.error = String((error && error.message) || error);
+        throw new Error(`渲染组件加载失败（${vendorState.error}）`);
+      });
+      return vendorPromise;
+    }
+
+    // 模块初始化时即注入渲染库；加载失败只记状态，不影响页面其他部分。
+    if (typeof document !== "undefined") {
+      const bootVendor = () => ensureVendor().catch(() => {});
+      if (document.head) bootVendor();
+      else document.addEventListener("DOMContentLoaded", bootVendor, { once: true });
+    }
+
+    function docxEntry(taskId) {
+      let entry = DOCX_CACHE.get(taskId);
+      if (entry) return entry;
+      entry = { blob: null, html: "", promise: null };
+      DOCX_CACHE.set(taskId, entry);
+      while (DOCX_CACHE.size > DOCX_CACHE_LIMIT) {
+        const oldest = DOCX_CACHE.keys().next().value;
+        if (oldest === taskId) break;
+        DOCX_CACHE.delete(oldest);
+      }
+      return entry;
+    }
+
+    // 图题注映射：index.js 解析 docx 时写 figures.json，这里按文件名或图号找回 images 下真实文件。
+    const FIGURES_CACHE = new Map();
+
+    function loadFigures(taskId) {
+      if (FIGURES_CACHE.has(taskId)) return FIGURES_CACHE.get(taskId);
+      const promise = fetch(`/api/jswj-figures/${encodeURIComponent(taskId)}`, { credentials: "same-origin" })
+        .then((res) => (res.ok ? res.json() : []))
+        .then((list) => (Array.isArray(list) ? list : []))
+        .catch(() => []);
+      FIGURES_CACHE.set(taskId, promise);
+      return promise;
+    }
+
+    function compactFigure(value) {
+      return String(value ?? "")
+        .replace(/[\s\u3000]/g, "")
+        .replace(/[－—–]/g, "-")
+        .replace(/[.．]/g, "-")
+        .replace(/^图(?:表)?/i, "")
+        .toLowerCase();
+    }
+
+    function captionStartsWith(caption, token) {
+      if (!caption.startsWith(token)) return false;
+      const next = caption.charAt(token.length);
+      return !next || !/[0-9.\-]/.test(next);
+    }
+
+    async function resolveFigureFile(taskId, figure) {
+      const raw = String(figure || "").split(/[\\/]/).pop();
+      if (!raw) return "";
+      const list = await loadFigures(taskId);
+      const lower = raw.toLowerCase();
+      const exact = list.find((item) => {
+        const file = String((item && item.file) || "").toLowerCase();
+        return file === lower || file.replace(/\.[a-z0-9]+$/, "") === lower;
+      });
+      if (exact) return exact.file;
+      const token = compactFigure(raw);
+      const stem = compactFigure(raw.replace(/\.[A-Za-z0-9]+$/, ""));
+      if (token) {
+        const byCaption = list.find((item) => {
+          const caption = compactFigure(item && item.caption);
+          if (!caption) return false;
+          return captionStartsWith(caption, token) || Boolean(stem) && captionStartsWith(caption, stem);
+        });
+        if (byCaption) return byCaption.file;
+        const byContains = list.find((item) => {
+          const caption = compactFigure(item && item.caption);
+          return Boolean(stem) && caption.includes(stem);
+        });
+        if (byContains) return byContains.file;
+      }
+      return raw;
+    }
+
+    async function fetchDocxBlob(taskId, onProgress) {
+      const res = await fetch(`/api/jswj-file/${encodeURIComponent(taskId)}`, { credentials: "same-origin" });
+      if (!res.ok) {
+        throw new Error(res.status === 404 ? "该任务没有可回显的原件" : `读取受审文件失败（HTTP ${res.status}）`);
+      }
+      const total = Number(res.headers.get("content-length") || 0);
+      if (!res.body || typeof res.body.getReader !== "function") {
+        const blob = await res.blob();
+        onProgress(blob.size, total || blob.size);
+        return blob;
+      }
+      const reader = res.body.getReader();
+      const chunks = [];
+      let loaded = 0;
+      let last = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value ? value.length : 0;
+        const now = Date.now();
+        if (now - last > 120) {
+          last = now;
+          onProgress(loaded, total);
+        }
+      }
+      onProgress(loaded, total || loaded);
+      return new Blob(chunks, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    }
+
+    function loadDocxHtml(taskId, onProgress) {
+      if (vendorState.status === "error") {
+        return Promise.reject(new Error(`渲染组件加载失败（${vendorState.error}）`));
+      }
+      const entry = docxEntry(taskId);
+      if (entry.html) {
+        onProgress({ phase: "done", size: entry.blob ? entry.blob.size : 0 });
+        return Promise.resolve(entry.html);
+      }
+      if (entry.promise) return entry.promise;
+      entry.promise = (async () => {
+        let blob = entry.blob;
+        if (!blob) {
+          blob = await fetchDocxBlob(taskId, (loaded, total) => onProgress({ phase: "file", loaded, total }));
+          entry.blob = blob;
+        }
+        onProgress({ phase: "unzip", size: blob.size });
+        const docx = await ensureVendor();
+        onProgress({ phase: "render", size: blob.size });
+        const holder = document.createElement("div");
+        holder.style.cssText = "position:fixed;left:-12000px;top:0;width:900px;background:#fff;padding:0;";
+        document.body.appendChild(holder);
+        try {
+          await docx.renderAsync(blob, holder, null, {
+            inWrapper: true,
+            breakPages: true,
+            ignoreLastRenderedPageBreak: false,
+          });
+          entry.html = holder.innerHTML;
+        } finally {
+          holder.remove();
+        }
+        onProgress({ phase: "done", size: blob.size });
+        return entry.html;
+      })().catch((error) => {
+        entry.promise = null;
+        throw error;
+      });
+      return entry.promise;
+    }
+
+    function textNodesIn(root) {
+      const nodes = [];
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const tag = node.parentNode ? node.parentNode.nodeName : "";
+          if (tag === "STYLE" || tag === "SCRIPT") return NodeFilter.FILTER_REJECT;
+          return node.nodeValue && node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        },
+      });
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      return nodes;
+    }
+
+    function clearHighlights(root) {
+      const marks = root.querySelectorAll("[data-jswj-hit='1']");
+      for (const mark of marks) {
+        const parent = mark.parentNode;
+        if (!parent) continue;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+        parent.normalize();
+      }
+    }
+
+    const WS_RE = /[\s\u00a0\u200b\u200c\u200d\ufeff]/;
+    const WS_RE_GLOBAL = /[\s\u00a0\u200b\u200c\u200d\ufeff]/g;
+    const PUNCT_UNIFY = {
+      "，": ",",
+      "。": ".",
+      "：": ":",
+      "；": ";",
+      "（": "(",
+      "）": ")",
+      "、": ",",
+      "－": "-",
+      "—": "-",
+      "–": "-",
+      "．": ".",
+      "！": "!",
+      "？": "?",
+    };
+    const QUOTE_MARKS = new Set(["“", "”", "‘", "’", "《", "》", "〈", "〉", "「", "」", "『", "』", '"', "'", "`"]);
+
+    function blockOf(node) {
+      const element = node.parentElement;
+      return element ? element.closest("p,li,td,th,h1,h2,h3,h4,h5,h6") || element : null;
+    }
+
+    function focusHit(box, hit) {
+      const run = () => {
+        if (!hit.isConnected) return;
+        hit.scrollIntoView({ block: "center" });
+        const boxRect = box.getBoundingClientRect();
+        const hitRect = hit.getBoundingClientRect();
+        if (box.scrollHeight > box.clientHeight + 4) {
+          box.scrollTop += hitRect.top - boxRect.top - box.clientHeight / 2 + hitRect.height / 2;
+        }
+      };
+      requestAnimationFrame(() => requestAnimationFrame(run));
+      window.setTimeout(run, 150);
+    }
+
+    // 归一化：NFKC（全角转半角）、去空白与表格单元格分隔符、统一标点、去引号书名号。
+    function canonicalString(value, stripPunctuation) {
+      let out = "";
+      for (const raw of String(value || "").normalize("NFKC")) {
+        if (!raw || WS_RE.test(raw) || raw === "|" || raw === "｜" || QUOTE_MARKS.has(raw)) continue;
+        const mapped = PUNCT_UNIFY[raw] || raw;
+        if (stripPunctuation && /[\p{P}\p{S}]/u.test(mapped)) continue;
+        out += mapped.toLowerCase();
+      }
+      return out;
+    }
+
+    // 逐字建立归一化文本与原始节点/偏移的对应关系，供 Range 回推定位。
+    function canonicalIndex(root, stripPunctuation) {
+      const nodes = [];
+      const offsets = [];
+      const chars = [];
+      for (const node of textNodesIn(root)) {
+        const value = node.nodeValue || "";
+        for (let i = 0; i < value.length; i += 1) {
+          const expanded = value[i].normalize("NFKC");
+          for (const raw of expanded) {
+            if (!raw || WS_RE.test(raw) || raw === "|" || raw === "｜" || QUOTE_MARKS.has(raw)) continue;
+            const mapped = PUNCT_UNIFY[raw] || raw;
+            if (stripPunctuation && /[\p{P}\p{S}]/u.test(mapped)) continue;
+            chars.push(mapped.toLowerCase());
+            nodes.push(node);
+            offsets.push(i);
+          }
+        }
+      }
+      return { text: chars.join(""), nodes, offsets };
+    }
+
+    // 命中区间可能横跨多个单元格/段落：按块拆成多个 Range，既不破坏表格结构，也便于缓存复用。
+    function rangesForInterval(index, interval) {
+      const ranges = [];
+      let cursor = interval.start;
+      const end = interval.end;
+      while (cursor < end) {
+        const startNode = index.nodes[cursor];
+        const block = blockOf(startNode);
+        let next = cursor + 1;
+        while (next < end && blockOf(index.nodes[next]) === block) next += 1;
+        const endNode = index.nodes[next - 1];
+        if (startNode && endNode && startNode.isConnected && endNode.isConnected) {
+          try {
+            const range = document.createRange();
+            range.setStart(startNode, index.offsets[cursor]);
+            range.setEnd(endNode, index.offsets[next - 1] + 1);
+            ranges.push(range);
+          } catch {
+            // 单个块失败不影响其他块。
+          }
+        }
+        cursor = next;
+      }
+      return ranges;
+    }
+
+    function wrapRange(range, reduceMotion) {
+      try {
+        const background = "rgba(59,63,182,0.20)";
+        const shadow = "0 0 0 2px rgba(59,63,182,0.25)";
+        const span = document.createElement("span");
+        span.setAttribute("data-jswj-hit", "1");
+        span.style.cssText = reduceMotion
+          ? `background:${background};box-shadow:${shadow};border-radius:2px;`
+          : "background:transparent;box-shadow:none;border-radius:2px;transition:background-color 120ms ease;";
+        span.appendChild(range.cloneContents());
+        range.deleteContents();
+        range.insertNode(span);
+        if (!reduceMotion) {
+          window.requestAnimationFrame(() => {
+            if (!span.isConnected) return;
+            span.style.background = background;
+            span.style.boxShadow = shadow;
+          });
+        }
+        return span;
+      } catch {
+        return null;
+      }
+    }
+
+    function matchesForTarget(index, target) {
+      const matches = [];
+      if (!target) return matches;
+      const step = Math.max(1, target.length);
+      let from = 0;
+      while (true) {
+        const position = index.text.indexOf(target, from);
+        if (position < 0) break;
+        const ranges = rangesForInterval(index, { start: position, end: position + target.length });
+        if (ranges.length) matches.push({ ranges });
+        from = position + step;
+      }
+      return matches;
+    }
+
+    function clearSectionHighlight(root) {
+      for (const block of root.querySelectorAll("[data-jswj-section-hit='1']")) {
+        block.style.background = block.dataset.jswjSectionBg || "";
+        block.style.boxShadow = block.dataset.jswjSectionShadow || "";
+        block.style.borderRadius = block.dataset.jswjSectionRadius || "";
+        block.removeAttribute("data-jswj-section-hit");
+        delete block.dataset.jswjSectionBg;
+        delete block.dataset.jswjSectionShadow;
+        delete block.dataset.jswjSectionRadius;
+      }
+    }
+
+    function markSection(block) {
+      if (!block) return;
+      if (!block.hasAttribute("data-jswj-section-hit")) {
+        block.setAttribute("data-jswj-section-hit", "1");
+        block.dataset.jswjSectionBg = block.style.background || "";
+        block.dataset.jswjSectionShadow = block.style.boxShadow || "";
+        block.dataset.jswjSectionRadius = block.style.borderRadius || "";
+      }
+      block.style.background = "rgba(59,63,182,0.16)";
+      block.style.boxShadow = "0 0 0 2px rgba(59,63,182,0.22)";
+      block.style.borderRadius = "3px";
+    }
+
+    function sectionBlocks(root, section) {
+      const match = String(section || "").match(/\d+(?:\.\d+)*/);
+      if (!match) return null;
+      const sec = match[0];
+      const blocks = [];
+      const seen = new Set();
+      for (const node of textNodesIn(root)) {
+        const block = node.parentElement && node.parentElement.closest("p,li,td,th,h1,h2,h3,h4,h5,h6");
+        if (!block || seen.has(block)) continue;
+        seen.add(block);
+        const text = (block.textContent || "").replace(WS_RE_GLOBAL, "");
+        if (!text.startsWith(sec)) continue;
+        const next = text.charAt(sec.length);
+        if (next && /[0-9]/.test(next)) continue;
+        if (next === "." && /[0-9]/.test(text.charAt(sec.length + 1))) continue;
+        blocks.push({ block, text });
+      }
+      return blocks.length ? { sec, blocks } : null;
+    }
+
+    // 章节兜底：优先正文里以「6.2」开头的标题块；只有目录条目时，用目录标题回正文找同名标题。
+    function findSectionAnchor(root, section) {
+      const found = sectionBlocks(root, section);
+      if (!found) return null;
+      const { sec, blocks } = found;
+      const direct = blocks.find((item) => !/\d{1,4}$/.test(item.text));
+      if (direct) return { block: direct.block, section: sec };
+      let title = blocks[0].text.slice(sec.length).replace(/^[.、\s]+/, "");
+      title = title.replace(/[.·…]+\d{1,4}$/, "").replace(/\d{1,4}$/, "").replace(/[.·…]+$/, "");
+      if (title.length >= 2) {
+        for (const node of textNodesIn(root)) {
+          const block = node.parentElement && node.parentElement.closest("p,li,td,th,h1,h2,h3,h4,h5,h6");
+          if (!block) continue;
+          const text = (block.textContent || "").replace(WS_RE_GLOBAL, "");
+          if (text === title || text.startsWith(title)) return { block, section: sec };
+        }
+      }
+      return { block: blocks[0].block, section: sec };
+    }
+
+    function failHint(section) {
+      const value = String(section || "").trim();
+      if (!value) return "该意见未标注章节位置";
+      if (!/[0-9]/.test(value)) return `该意见指向「${value}」，原文中无固定可定位位置`;
+      return "未定位到原文";
+    }
+
+    // 三层兜底：①归一化精确匹配（收集全部命中） ②前 16→8 字滑窗 ③章节锚点。
+    function buildMatches(root, quote, section) {
+      const exactTarget = canonicalString(quote, false);
+      if (exactTarget) {
+        const exactIndex = canonicalIndex(root, false);
+        const exactMatches = matchesForTarget(exactIndex, exactTarget);
+        if (exactMatches.length) {
+          return { layer: 1, hint: "原文定位", tone: C.ok, matches: exactMatches, prefixN: 0, section: "" };
+        }
+      }
+      const strictTarget = canonicalString(quote, true);
+      if (strictTarget) {
+        const strictIndex = canonicalIndex(root, true);
+        for (let n = 16; n >= 8; n -= 1) {
+          if (strictTarget.length < n) continue;
+          const partialMatches = matchesForTarget(strictIndex, strictTarget.slice(0, n));
+          if (partialMatches.length) {
+            return {
+              layer: 2,
+              hint: `原文定位（按前 ${n} 字匹配）`,
+              tone: C.warn,
+              matches: partialMatches,
+              prefixN: n,
+              section: "",
+            };
+          }
+        }
+      }
+      const anchor = findSectionAnchor(root, section);
+      if (anchor) {
+        return {
+          layer: 3,
+          hint: `原文定位（章节 ${anchor.section}）`,
+          tone: C.warn,
+          matches: [],
+          anchor: anchor.block,
+          prefixN: 0,
+          section: anchor.section,
+        };
+      }
+      return { layer: 0, hint: failHint(section), tone: C.err, matches: [], prefixN: 0, section: "" };
+    }
+
+    const MATCH_CACHE = new Map();
+
+    function matchCacheKey(taskId, quote, section) {
+      return `${taskId}\u0000${quote || ""}\u0000${section || ""}`;
+    }
+
+    function ensureMatches(root, taskId, quote, section) {
+      const key = matchCacheKey(taskId, quote, section);
+      if (MATCH_CACHE.has(key)) return MATCH_CACHE.get(key);
+      const entry = buildMatches(root, quote, section);
+      entry.key = key;
+      MATCH_CACHE.set(key, entry);
+      return entry;
+    }
+
+    // 切换命中处：清旧高亮，按缓存的 Range 重新包 span，滚到当前处；不重新遍历全文。
+    function paintMatch(root, entry, position, reduceMotion) {
+      clearHighlights(root);
+      clearSectionHighlight(root);
+      const match = entry.matches[position];
+      if (!match) return null;
+      let first = null;
+      for (const range of match.ranges) {
+        const span = wrapRange(range, reduceMotion);
+        if (span && !first) first = span;
+      }
+      if (first) focusHit(root, first);
+      return first;
+    }
+
+    function DocxViewer(props) {
+      const boxRef = React.useRef(null);
+      const [progress, setProgress] = React.useState({ phase: "file", loaded: 0, total: 0 });
+      const [error, setError] = React.useState("");
+      const [match, setMatch] = React.useState(null);
+      const matchRef = React.useRef(null);
+      const [ready, setReady] = React.useState(false);
+
+      // 同一任务只加载、渲染一次；切换意见不动容器里的原文。
+      React.useEffect(() => {
+        let alive = true;
+        const box = boxRef.current;
+        if (!box) return undefined;
+        MATCH_CACHE.clear();
+        box.innerHTML = "";
+        setError("");
+        setMatch(null);
+        matchRef.current = null;
+        setReady(false);
+        setProgress({ phase: "file", loaded: 0, total: 0 });
+        loadDocxHtml(props.taskId, (next) => {
+          if (alive) setProgress(next);
+        })
+          .then((html) => {
+            if (!alive || !boxRef.current) return;
+            boxRef.current.innerHTML = html;
+            setReady(true);
+          })
+          .catch((err) => {
+            if (alive) setError(String((err && err.message) || err));
+          });
+        return () => {
+          alive = false;
+        };
+      }, [props.taskId]);
+
+      // 每次切换意见：复用已缓存的命中区间，只做清高亮 + 重包 + 滚动。
+      React.useEffect(() => {
+        if (!ready) return;
+        const box = boxRef.current;
+        if (!box) return;
+        const entry = ensureMatches(box, props.taskId, props.quote, props.section);
+        const state = {
+          hint: entry.hint,
+          tone: entry.tone,
+          layer: entry.layer,
+          prefixN: entry.prefixN || 0,
+          section: entry.section || "",
+          total: entry.matches.length,
+          position: 0,
+          key: entry.key,
+        };
+        matchRef.current = state;
+        setMatch(state);
+        if (entry.matches.length) {
+          paintMatch(box, entry, 0, props.reduceMotion);
+        } else if (entry.anchor) {
+          clearHighlights(box);
+          clearSectionHighlight(box);
+          markSection(entry.anchor);
+          focusHit(box, entry.anchor);
+        } else {
+          clearHighlights(box);
+          clearSectionHighlight(box);
+          box.scrollTop = 0;
+        }
+      }, [ready, props.taskId, props.quote, props.section, props.reduceMotion]);
+
+      const moveMatch = (delta) => {
+        const current = matchRef.current;
+        const box = boxRef.current;
+        if (!current || !box || current.total < 2) return;
+        const entry = MATCH_CACHE.get(current.key);
+        if (!entry || !entry.matches.length) return;
+        const next = (current.position + delta + current.total) % current.total;
+        const nextState = { ...current, position: next };
+        matchRef.current = nextState;
+        setMatch(nextState);
+        paintMatch(box, entry, next, props.reduceMotion);
+      };
+
+      const mb = (bytes) => (Number(bytes || 0) / (1024 * 1024)).toFixed(1);
+      const busy = !error && progress.phase !== "done";
+      let text = "加载原文件…";
+      if (progress.phase === "file" && progress.loaded) {
+        text = `加载原文件 ${mb(progress.loaded)} MB${progress.total ? ` / ${mb(progress.total)} MB` : ""}`;
+      } else if (progress.phase === "unzip") {
+        text = `解压原文件（${mb(progress.size)} MB）…`;
+      } else if (progress.phase === "render") {
+        text = "渲染页面…";
+      }
+
+      let hintView = null;
+      if (match) {
+        let label = "原文定位如下";
+        let variant = s.hintPlain;
+        let color = C.sub;
+        if (match.layer === 2) {
+          label = `原文定位如下 · 按前 ${match.prefixN} 字匹配`;
+          variant = s.hintWarn;
+          color = C.text;
+        } else if (match.layer === 3) {
+          label = `原文定位如下 · 章节 ${match.section}`;
+          variant = s.hintWarn;
+          color = C.text;
+        } else if (match.layer === 0) {
+          label = match.hint;
+          variant = s.hintFail;
+          color = C.err;
+        }
+        hintView = h(
+          "div",
+          { style: { ...s.hintBar, ...variant } },
+          h("span", { style: { ...s.hintLabel, color } }, label),
+          match.total > 1
+            ? h(
+                "span",
+                { style: s.matchNav },
+                h("span", { style: s.matchCount }, `第 ${match.position + 1} / ${match.total} 处`),
+                h("button", { style: s.matchNavBtn, type: "button", onClick: () => moveMatch(-1) }, "上一处"),
+                h("button", { style: s.matchNavBtn, type: "button", onClick: () => moveMatch(1) }, "下一处"),
+              )
+            : null,
+        );
+      }
+
+      return h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: 10, flex: "1 1 auto", minHeight: 0, overflow: "hidden" } },
+        busy
+          ? h(
+              "div",
+              { style: { ...s.note, marginTop: 0 } },
+              h("div", { style: { color: C.text, fontWeight: 600, marginBottom: 4 } }, "正在准备受审文件"),
+              h("div", null, text),
+              h("div", { style: { marginTop: 4 } }, "原文件只拉取一次，切换意见时复用缓存。"),
+            )
+          : null,
+        error ? h("div", { style: { ...s.note, marginTop: 0, color: C.err } }, error) : null,
+        hintView,
+        h("div", { ref: boxRef, style: { ...s.evidenceDoc, display: error ? "none" : "block" } }),
+      );
+    }
+
+    function EvidenceFigure(props) {
+      const [broken, setBroken] = React.useState(false);
+      const [file, setFile] = React.useState("");
+      const [loading, setLoading] = React.useState(true);
+      const raw = String(props.figure || "").trim();
+
+      React.useEffect(() => {
+        let alive = true;
+        setBroken(false);
+        setLoading(true);
+        setFile("");
+        resolveFigureFile(props.taskId, raw)
+          .then((name) => {
+            if (!alive) return;
+            setFile(name || "");
+            setLoading(false);
+          })
+          .catch(() => {
+            if (!alive) return;
+            setFile(raw.split(/[\\/]/).pop());
+            setLoading(false);
+          });
+        return () => {
+          alive = false;
+        };
+      }, [props.taskId, raw]);
+
+      if (!raw) return h("div", { style: s.note }, "该意见未记录证据图片。");
+      if (loading) return h("div", { style: s.note }, "正在查找证据图片…");
+      if (broken) return h("div", { style: s.note }, `未找到与「${raw}」对应的证据图片。`);
+      return h(
+        "div",
+        { style: s.evidenceFigure },
+        h(
+          "div",
+          { style: s.evidenceShot },
+          h("img", {
+            src: `/api/jswj-image/${encodeURIComponent(props.taskId)}/${encodeURIComponent(file || raw)}`,
+            alt: raw,
+            style: s.evidenceImg,
+            onError: () => setBroken(true),
+          }),
+          h("div", { style: s.evidenceRing }),
+        ),
+      );
+    }
+
+    function IssueHeadline(props) {
+      const issue = props.issue || {};
+      const severe = issue.severity === "严重";
+      return h(
+        "div",
+        { style: s.issueCardTop },
+        h(
+          "span",
+          { style: { ...s.severityBadge, ...(severe ? s.severityBadgeSevere : s.severityBadgeNormal) } },
+          issue.severity || "建议",
+        ),
+        h("span", { style: s.issueLocation }, issue.location || "未标位置"),
+      );
+    }
+
+    function IssueDetail(props) {
+      const issue = props.issue || {};
+      const big = props.size === "drawer";
+      const rows = [];
+      if (issue.problem) {
+        rows.push({ key: "problem", label: "问题", text: issue.problem, style: big ? s.drawerProblem : s.issueProblem });
+      }
+      if (issue.basis) {
+        rows.push({ key: "basis", label: "依据", text: issue.basis, style: big ? s.drawerBasis : s.issueBasis });
+      }
+      if (issue.suggestion) {
+        rows.push({
+          key: "suggestion",
+          label: "建议",
+          text: issue.suggestion,
+          style: big ? s.drawerSuggestion : s.issueSuggestion,
+        });
+      }
+      return h(
+        "div",
+        { style: s.issueDetail },
+        rows.length
+          ? rows.map((row) =>
+              h(
+                "div",
+                { key: row.key, style: s.issueDetailRow },
+                h("div", { style: big ? s.drawerIssueLabel : s.issueLabel }, row.label),
+                h("div", { style: row.style }, row.text),
+              ),
+            )
+          : h("div", { style: big ? s.drawerProblem : s.issueProblem }, "无意见正文"),
+      );
+    }
+
+    function EvidenceDrawer(props) {
+      const [closeHover, setCloseHover] = React.useState(false);
+      const hasIssue = Boolean(props.issue);
+      React.useEffect(() => {
+        if (!props.open) setCloseHover(false);
+      }, [props.open]);
+      const issue = props.issue || {};
+      const evidence = issue.evidence && typeof issue.evidence === "object" ? issue.evidence : null;
+      const hasText = Boolean(evidence && (evidence.quote || evidence.section));
+      const evidenceTitle = evidence && evidence.figure ? "证据图" : hasText ? "原文回显" : "证据";
+      const motionStyle = {
+        transform: props.open ? "translateX(0)" : "translateX(100%)",
+        opacity: props.open ? 1 : 0,
+        pointerEvents: props.open ? "auto" : "none",
+        transition: props.reduceMotion
+          ? "none"
+          : `transform ${PANEL_MS}ms ${PANEL_EASE}, opacity ${props.open ? 180 : 140}ms ease`,
+        willChange: "transform, opacity",
+      };
+      let body = null;
+      if (hasIssue) {
+        if (!evidence) {
+          body = h("div", { style: s.note }, "该意见未记录证据位置");
+        } else if (evidence.figure) {
+          body = h(EvidenceFigure, {
+            key: `${props.taskId}:${evidence.figure}`,
+            taskId: props.taskId,
+            figure: evidence.figure,
+          });
+        } else if (hasText) {
+          body = h(DocxViewer, {
+            taskId: props.taskId,
+            quote: evidence.quote || "",
+            section: evidence.section || "",
+            reduceMotion: props.reduceMotion,
+          });
+        } else {
+          body = h("div", { style: s.note }, "该意见未记录证据位置");
+        }
+      }
+      return h(
+        "aside",
+        {
+          style: { ...(props.panelStyle || s.evidencePanel), ...motionStyle },
+          "aria-label": "证据",
+          "aria-hidden": !props.open,
+        },
+        h(
+          "div",
+          { style: { ...s.evidenceHead, paddingRight: props.headerRightPad || 16 } },
+          h(
+            "div",
+            { style: s.evidenceTitle },
+            evidenceTitle,
+            h("div", { style: s.evidenceMeta }, hasIssue ? `意见 ${props.index + 1} · ${issue.dimension || "内容"}` : ""),
+          ),
+          h(
+            "button",
+            {
+              type: "button",
+              style: { ...s.btnClose, ...(closeHover ? s.btnCloseHover : {}) },
+              onClick: props.onClose,
+              onMouseEnter: () => setCloseHover(true),
+              onMouseLeave: () => setCloseHover(false),
+              title: "关闭（Esc）",
+            },
+            "关闭",
+          ),
+        ),
+        hasIssue
+          ? h(
+              "div",
+              { style: s.drawerIssue },
+              h(IssueHeadline, { issue }),
+              h(IssueDetail, { issue, size: "drawer" }),
+            )
+          : null,
+        hasIssue ? h("div", { style: s.evidenceBody }, body) : null,
+      );
+    }
+
     function promptFor(task, step, extra) {
       const names = stepsOf(task.flow);
       const modeLabels = {
@@ -596,6 +1663,17 @@ window.__ModuleLoader__.load({
         background: "背景资料：只取事实、数据与约束，重新起草，不照搬结构",
       };
       const sources = task.data?.sources || [];
+      const reviewData = task.data?.review || {};
+      const isReview = task.flow === "review";
+      const subjectLine = isReview && reviewData.file
+        ? `受审文件：${reviewData.file.title || reviewData.file.url || "-"}；评审类型：${reviewData.type || "-"}${reviewData.subtype ? " / " + reviewData.subtype : ""}；评审单：${reviewData.checklist || "-"}。`
+        : "";
+      const reviewRefs = isReview ? (reviewData.refs || []) : [];
+      const refLines = isReview
+        ? (reviewRefs.length
+            ? `参考资料（${reviewRefs.length} 份）：\n${reviewRefs.map((r, i) => `${i + 1}. ${r.title || r.url}`).join("\n")}`
+            : "本次任务未提供参考资料：依赖依据的检查项一律标注「缺依据」，不得默认符合。")
+        : "";
       const template = task.data?.template;
       const templateLine = template && template.path
         ? `本次任务模板：${template.name || ""}（路径 ${template.path}）。渲染时把该路径传给 jswj_render_docx 的 templatePath，不要用默认模板。`
@@ -613,6 +1691,8 @@ window.__ModuleLoader__.load({
         "请加载 jswj-draftbydsh 技能，先调用 jswj_task_get 读取该任务，再按任务数据完成这一步。",
         sourceLines ? `参考资料使用程度：\n${sourceLines}` : "",
         templateLine,
+        subjectLine,
+        refLines,
         extra || "",
         "完成后必须调用 jswj_task_update 把结果写回任务（generation / selfcheck / revision / review.issues），然后回到「技术文件起草」页面点刷新继续。",
       ]
@@ -688,7 +1768,47 @@ window.__ModuleLoader__.load({
       const [query, setQuery] = React.useState("");
       const [updateInfo, setUpdateInfo] = React.useState(null);
       const [health, setHealth] = React.useState({ loading: true });
+      const [evidence, setEvidence] = React.useState(null);
+      const [drawerBox, setDrawerBox] = React.useState(null);
+      const [drawerOpen, setDrawerOpen] = React.useState(false);
+      const pageRef = React.useRef(null);
       const autoPreviewRef = React.useRef("");
+      const closeTimerRef = React.useRef(0);
+      const openFrameRef = React.useRef(0);
+      const reduceMotion = prefersReducedMotion();
+
+      const clearCloseTimer = () => {
+        if (closeTimerRef.current) {
+          window.clearTimeout(closeTimerRef.current);
+          closeTimerRef.current = 0;
+        }
+      };
+
+      const selectEvidence = (index) => {
+        clearCloseTimer();
+        if (openFrameRef.current) {
+          window.cancelAnimationFrame(openFrameRef.current);
+          openFrameRef.current = 0;
+        }
+        setEvidence({ index });
+      };
+
+      const closeDrawer = () => {
+        if (!evidence && !drawerOpen) return;
+        if (openFrameRef.current) {
+          window.cancelAnimationFrame(openFrameRef.current);
+          openFrameRef.current = 0;
+        }
+        clearCloseTimer();
+        setDrawerOpen(false);
+        closeTimerRef.current = window.setTimeout(
+          () => {
+            closeTimerRef.current = 0;
+            setEvidence(null);
+          },
+          reduceMotion ? 0 : PANEL_MS,
+        );
+      };
 
       const loadTasks = async () => {
         try {
@@ -711,6 +1831,74 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (task) setForm(hydrate(task));
       }, [task && task.id, task && task.step, task && task.updatedAt]);
+
+      // 换任务或换步骤时收起证据抽屉，避免旧意见的定位留在新页面上。
+      React.useEffect(() => {
+        closeDrawer();
+      }, [task && task.id, task && task.step]);
+
+      // Esc 关闭证据抽屉；捕获阶段处理，避免被宿主快捷键先吃掉。
+      React.useEffect(() => {
+        if (!evidence) return undefined;
+        const onKeyDown = (event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            closeDrawer();
+          }
+        };
+        window.addEventListener("keydown", onKeyDown, true);
+        return () => window.removeEventListener("keydown", onKeyDown, true);
+      }, [evidence, drawerOpen]);
+
+      // 抽屉用插件页面根节点的坐标定位，避免顶到宿主标题栏、侧栏、状态栏。
+      React.useLayoutEffect(() => {
+        if (!evidence) {
+          setDrawerBox(null);
+          return undefined;
+        }
+        const measure = () => {
+          const el = pageRef.current;
+          if (!el) {
+            setDrawerBox(null);
+            return;
+          }
+          const rect = el.getBoundingClientRect();
+          if (rect.height <= 0) {
+            setDrawerBox(null);
+            return;
+          }
+          const top = Math.max(0, rect.top);
+          const height = Math.max(0, Math.min(rect.height, window.innerHeight - top));
+          const edgeGap = Math.max(0, window.innerWidth - rect.right);
+          setDrawerBox({ top, right: edgeGap, height, edgeGap });
+        };
+        measure();
+        window.addEventListener("resize", measure);
+        return () => window.removeEventListener("resize", measure);
+      }, [evidence]);
+
+      // 打开时先保持 translateX(100%) 并完成坐标测量，下一帧再进入过渡，避免首次打开跳一下。
+      React.useEffect(() => {
+        if (!evidence) return undefined;
+        if (openFrameRef.current) window.cancelAnimationFrame(openFrameRef.current);
+        openFrameRef.current = window.requestAnimationFrame(() => {
+          openFrameRef.current = window.requestAnimationFrame(() => {
+            openFrameRef.current = 0;
+            setDrawerOpen(true);
+          });
+        });
+        return () => {
+          if (openFrameRef.current) window.cancelAnimationFrame(openFrameRef.current);
+        };
+      }, [evidence]);
+
+      React.useEffect(
+        () => () => {
+          clearCloseTimer();
+          if (openFrameRef.current) window.cancelAnimationFrame(openFrameRef.current);
+        },
+        [],
+      );
 
       React.useEffect(() => {
         if (!task || !form) return;
@@ -2203,6 +3391,7 @@ window.__ModuleLoader__.load({
           const options = {
             需求规范: "需求规范评审单 v1（28 项）",
             技术方案: "技术方案评审单 v2（32 项）",
+            安全性文件: "安全性文件评审单 v1（24 项）",
           };
           return h(
             "div",
@@ -2215,7 +3404,7 @@ window.__ModuleLoader__.load({
                 h(
                   "select",
                   { style: s.input, value: form.review.type || "需求规范", onChange: (e) => set({ review: { ...form.review, type: e.target.value, checklist: options[e.target.value] || "" } }) },
-                  ["需求规范", "技术方案"].map((v) => h("option", { key: v }, v)),
+                  ["需求规范", "技术方案", "安全性文件"].map((v) => h("option", { key: v }, v)),
                 ),
               ),
               h("div", { style: s.field },
@@ -2227,12 +3416,29 @@ window.__ModuleLoader__.load({
                 ),
               ),
             ),
+              form.review.type === "安全性文件"
+                ? h(
+                    "div",
+                    { style: s.field },
+                    h("label", { style: s.label }, "安全性文件类型"),
+                    h(
+                      "select",
+                      {
+                        style: s.input,
+                        value: form.review.subtype || "功能危害评估报告",
+                        onChange: (e) => set({ review: { ...form.review, subtype: e.target.value } }),
+                      },
+                      ["功能危害评估报告", "安全性评估报告（含初步）", "FTA 故障树"].map((v) => h("option", { key: v }, v)),
+                    ),
+                  )
+                : null,
+
             h("div", { style: s.note }, "类型与评审单的适用类型必须一致；一个任务只用一份评审单，中途更换须新建任务。"),
             h(
               "div",
               { style: s.footer },
               h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
-              h("button", { style: { ...s.btn, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: () => submit({ review: { ...form.review, checklist: form.review.checklist || options[form.review.type] } }) }, "下一步：文件与资料"),
+              h("button", { style: { ...s.btn, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: () => submit({ review: { ...form.review, checklist: form.review.checklist || options[form.review.type], subtype: form.review.type === "安全性文件" ? (form.review.subtype || "功能危害评估报告") : "" } }) }, "下一步：文件与资料"),
               error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
             ),
           );
@@ -2254,10 +3460,85 @@ window.__ModuleLoader__.load({
               { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
               h("input", { style: { ...s.input, flex: "1 1 320px" }, value: form.link || "", placeholder: "粘贴受审文件的飞书云文档链接", onChange: (e) => set({ link: e.target.value }) }),
               h("button", { style: s.btnSecondary, disabled: busy, onClick: parse }, "解析"),
+              h(
+                "label",
+                { style: { ...s.btnSecondary, display: "inline-flex", alignItems: "center", justifyContent: "center", alignSelf: "center", height: 32, padding: "0 14px", boxSizing: "border-box", whiteSpace: "nowrap", lineHeight: "18px", cursor: "pointer" } },
+                "上传文件",
+                h("input", {
+                  type: "file",
+                  accept: ".docx,.md,.markdown,.txt",
+                  disabled: busy,
+                  style: { display: "none" },
+                  onChange: (event) => {
+                    const picked = event.target.files && event.target.files[0];
+                    if (!picked) return;
+                    run(async () => {
+                      const dataBase64 = await fileToBase64(picked);
+                      const uploaded = await call("source.upload", { name: picked.name, dataBase64, taskId: task.id, noStore: true });
+                      set({ review: { ...form.review, file: { ok: true, title: uploaded.title || picked.name, chars: uploaded.chars || 0, url: uploaded.url || "" } } });
+                    });
+                  },
+                }),
+              ),
             ),
             form.review.file?.ok
               ? h("div", { style: { ...s.row, marginTop: 10 } }, h("span", { style: { color: C.ok } }, "✓"), h("div", { style: s.rowMain }, h("div", null, form.review.file.title), h("div", { style: s.mono }, `已解析 · ${form.review.file.chars} 字`)))
-              : h("div", { style: s.note }, "受审文件是必需项；参考资料可在后续交给助手时补充，缺失时相关检查项标「缺依据」。"),
+              : h("div", { style: s.note }, "受审文件是必需项，单份；可用云文档链接或上传文件。"),
+            h("div", { style: { ...s.note, marginTop: 14 } }, "参考资料（可选，可多份）：内容审查的依据。缺资料时，依赖依据的检查项标「缺依据」。"),
+            h(
+              "div",
+              { style: { display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" } },
+              h("input", {
+                style: { ...s.input, flex: "1 1 320px" },
+                placeholder: "粘贴参考资料的飞书云文档链接",
+                value: form.refLink || "",
+                onChange: (e) => set({ refLink: e.target.value }),
+              }),
+              h("button", {
+                style: s.btnSecondary,
+                disabled: busy,
+                onClick: () => {
+                  const link = String(form.refLink || "").trim();
+                  if (!link) return;
+                  (async () => {
+                    const doc = await call("doc.read", { target: link });
+                    const refs = (form.review.refs || []).filter((x) => x.url !== link);
+                    refs.push({ url: link, title: doc.title || link, chars: doc.chars || 0, ok: true });
+                    set({ review: { ...form.review, refs }, refLink: "" });
+                  })().catch((err) => set({ error: String((err && err.message) || err) }));
+                },
+              }, "添加"),
+              h(
+                "label",
+                { style: { ...s.btnSecondary, display: "inline-flex", alignItems: "center", justifyContent: "center", alignSelf: "center", height: 32, padding: "0 14px", boxSizing: "border-box", whiteSpace: "nowrap", lineHeight: "18px", cursor: "pointer" } },
+                "上传参考资料",
+                h("input", {
+                  type: "file",
+                  accept: ".docx,.md,.markdown,.txt",
+                  disabled: busy,
+                  style: { display: "none" },
+                  onChange: (event) => {
+                    const picked = event.target.files && event.target.files[0];
+                    if (!picked) return;
+                    run(async () => {
+                      const dataBase64 = await fileToBase64(picked);
+                      const up = await call("source.upload", { name: picked.name, dataBase64, taskId: task.id });
+                      const refs = (form.review.refs || []).concat({ url: up.url || picked.name, title: up.title || picked.name, chars: up.chars || 0, ok: true });
+                      set({ review: { ...form.review, refs } });
+                    });
+                  },
+                }),
+              ),
+            ),
+            (form.review.refs || []).map((item, i) =>
+              h(
+                "div",
+                { key: `${item.url}-${i}`, style: { ...s.row, marginTop: 8 } },
+                h("span", { style: { color: C.ok } }, "✓"),
+                h("div", { style: s.rowMain }, h("div", { style: { fontSize: 13 } }, item.title), h("div", { style: s.mono }, `已解析 · ${item.chars} 字`)),
+                h("button", { style: s.btnGhost, onClick: () => set({ review: { ...form.review, refs: (form.review.refs || []).filter((_, idx) => idx !== i) } }) }, "移除"),
+              ),
+            ),
             h(
               "div",
               { style: s.footer },
@@ -2275,11 +3556,11 @@ window.__ModuleLoader__.load({
         if (step === 4) {
           const issues = form.review.issues || [];
           const dimensions = {};
-          for (const item of issues) {
+          issues.forEach((item, index) => {
             const key = item.dimension || "内容";
             if (!dimensions[key]) dimensions[key] = [];
-            dimensions[key].push(item);
-          }
+            dimensions[key].push({ item, index });
+          });
           return h(
             "div",
             null,
@@ -2313,24 +3594,31 @@ window.__ModuleLoader__.load({
                     ),
                     h(
                       "div",
-                      { style: s.list },
-                      dimensions[dim].map((it, i) =>
+                      { style: s.issueList },
+                      dimensions[dim].map((entry) =>
                         h(
                           "div",
-                          { key: i, style: s.row },
-                          h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"),
-                          h(
-                            "div",
-                            { style: s.rowMain },
-                            h("div", null, `${it.location || ""} ${it.problem || ""}`),
-                            h("div", { style: s.mono }, `依据：${it.basis || "缺依据"}；建议：${it.suggestion || "-"}`),
-                          ),
+                          {
+                            key: entry.index,
+                            style: {
+                              ...s.issueCard,
+                              ...(reduceMotion ? { transition: "none" } : {}),
+                              ...(evidence && evidence.index === entry.index ? s.issueCardActive : {}),
+                            },
+                            onClick: () => selectEvidence(entry.index),
+                            title: "点击查看原文或原图",
+                          },
+                          h(IssueHeadline, { issue: entry.item }),
+                          h(IssueDetail, { issue: entry.item }),
                         ),
                       ),
                     ),
                   ),
                 )
               : h("div", { style: s.note }, "点「交给助手预审」，助手按评审单检查后把意见写回 review.issues。"),
+            issues.length
+              ? h("div", { style: s.note }, "点击任意意见，可在右侧查看受审文件的原文或证据图片。")
+              : null,
             h(
               "div",
               { style: s.footer },
@@ -2501,9 +3789,35 @@ window.__ModuleLoader__.load({
         );
       };
 
+      const evidenceIssue =
+        evidence && form && form.review && Array.isArray(form.review.issues) ? form.review.issues[evidence.index] : null;
+
+      const panelWidth = Math.max(360, Math.min(window.innerWidth * 0.42, 820));
+      const drawerStyle = drawerBox
+        ? {
+            ...s.evidencePanel,
+            top: drawerBox.top,
+            right: drawerBox.right,
+            height: drawerBox.height,
+            maxHeight: drawerBox.height,
+          }
+        : {
+            ...s.evidencePanel,
+            top: 40,
+            right: 0,
+            height: "calc(100vh - 40px)",
+            maxHeight: "calc(100vh - 40px)",
+          };
+      const drawerHeaderPad = drawerBox ? Math.max(12, 16 - drawerBox.edgeGap) : 16;
+      const pageStyle = {
+        ...s.page,
+        paddingRight: drawerOpen ? `${panelWidth + (drawerBox ? drawerBox.edgeGap : 0) + 18}px` : "26px",
+        transition: reduceMotion ? "none" : `padding-right ${PANEL_MS}ms ${PANEL_EASE}`,
+      };
+
       return h(
         "div",
-        { style: s.page },
+        { ref: pageRef, style: pageStyle },
         h(
           "div",
           { style: s.inner },
@@ -2644,6 +3958,16 @@ window.__ModuleLoader__.load({
             ),
           ),
         ),
+        h(EvidenceDrawer, {
+          taskId: task.id,
+          index: evidence ? evidence.index : -1,
+          issue: evidenceIssue,
+          panelStyle: drawerStyle,
+          headerRightPad: drawerHeaderPad,
+          open: drawerOpen,
+          reduceMotion,
+          onClose: closeDrawer,
+        }),
       );
     }
 

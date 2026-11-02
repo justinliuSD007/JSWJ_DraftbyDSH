@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -115,10 +116,28 @@ namespace JswjSetup
     internal sealed class Installer
     {
         public const string DepName = "@govy/dsh-plugin-jswj-draft";
+
+        /** LibreOffice 官方稳定版 MSI（x86-64）。版本写死，升级时改这里即可。 */
+        public const string LibreOfficeVersion = "26.8.2";
+        public const string LibreOfficeMsiUrl =
+            "https://download.documentfoundation.org/libreoffice/stable/" + LibreOfficeVersion +
+            "/win/x86_64/LibreOffice_" + LibreOfficeVersion + "_Win_x86-64.msi";
+        public const string LibreOfficeMsiName = "LibreOffice_" + LibreOfficeVersion + "_Win_x86-64.msi";
+
+        /** 认为「已安装」的判断依据：两个安装位置的 soffice.exe 存在即可。 */
+        private static readonly string[] LibreOfficeExe =
+        {
+            @"C:\Program Files\LibreOffice\program\soffice.exe",
+            @"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+        };
+
         public readonly string PayloadDir;
         public readonly string ProfileDir;
         public readonly string InstallDir;
         public string Version = "";
+
+        /** 长耗时步骤（复制、下载）里检查用户是否点了取消；由界面注入。 */
+        public Func<bool> CancelCheck;
 
         public Installer()
         {
@@ -132,6 +151,35 @@ namespace JswjSetup
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JSWJ-Draft\\plugin")
                 : installOverride;
             Version = ReadVersion();
+        }
+
+        /** 界面上显示的安装位置：用 LocalApplicationData 拼完整路径，避免 8.3 短名。 */
+        public string DisplayInstallDir
+        {
+            get
+            {
+                string overrideDir = Environment.GetEnvironmentVariable("JSWJ_INSTALL_DIR");
+                if (!string.IsNullOrEmpty(overrideDir)) return ToLongPath(overrideDir);
+                return Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "JSWJ-Draft", "plugin");
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int GetLongPathName(string shortPath, StringBuilder longPath, int bufferLength);
+
+        /** 把 8.3 短名展开成长路径；路径不存在或展开失败时原样返回。 */
+        private static string ToLongPath(string path)
+        {
+            try
+            {
+                var buffer = new StringBuilder(1024);
+                int n = GetLongPathName(path, buffer, buffer.Capacity);
+                if (n > 0 && n < buffer.Capacity) return buffer.ToString();
+            }
+            catch { }
+            return path;
         }
 
         private string ReadVersion()
@@ -170,6 +218,7 @@ namespace JswjSetup
             catch { }
             log.AppendLine("DSH running: " + running);
             log.AppendLine("localappdata: " + Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+            log.AppendLine("libreoffice: " + (FindLibreOffice() ?? "未安装"));
         }
 
         private readonly List<string[]> _backups = new List<string[]>();
@@ -288,6 +337,11 @@ namespace JswjSetup
             {
                 try { Directory.Delete(InstallDir, true); } catch (Exception ex) { log("文件删除失败：" + ex.Message); }
             }
+            // LibreOffice 是独立软件，用户可能另有用途，卸载插件时不碰它。
+            string soffice = FindLibreOffice();
+            log(soffice != null
+                ? "LibreOffice 是独立组件，保留未动：" + soffice
+                : "LibreOffice 是独立组件，不在卸载范围内。");
             log("卸载完成。请重新打开 DSH。");
         }
 
@@ -302,9 +356,59 @@ namespace JswjSetup
 
         public void CopyPayload(Action<string> log)
         {
+            CopyPayload(log, null);
+        }
+
+        /** 复制插件文件；progress 按「已复制字节 / 总字节」回报，用于进度百分比。 */
+        public void CopyPayload(Action<string> log, Action<long, long> progress)
+        {
             log("复制插件文件到 " + InstallDir);
             Directory.CreateDirectory(InstallDir);
-            CopyTree(PayloadDir, InstallDir);
+
+            var files = new List<string>();
+            CollectFiles(PayloadDir, files);
+            long total = 0;
+            foreach (var f in files)
+            {
+                try { total += new FileInfo(f).Length; } catch { }
+            }
+
+            long done = 0;
+            foreach (var file in files)
+            {
+                CheckCancelled();
+                string rel = file.Substring(PayloadDir.Length).TrimStart('\\');
+                string target = Path.Combine(InstallDir, rel);
+                string dir = Path.GetDirectoryName(target);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.Copy(file, target, true);
+                try { done += new FileInfo(file).Length; } catch { }
+                if (progress != null) progress(done, total);
+            }
+            log("已复制 " + files.Count + " 个文件，共 " + (total / 1024) + " KB");
+        }
+
+        /** 安装器自身与本地凭据不进插件目录，其余文件（含子目录）全部复制。 */
+        private static bool IsExcludedFromPayload(string path)
+        {
+            string name = Path.GetFileName(path);
+            if (name.Equals("Setup.exe", StringComparison.OrdinalIgnoreCase)) return true;
+            if (name.Equals("Setup-bundled.exe", StringComparison.OrdinalIgnoreCase)) return true;
+            if (name.Equals("Setup.Creds.cs", StringComparison.OrdinalIgnoreCase)) return true;
+            if (name.Equals("creds.local.json", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private static void CollectFiles(string from, List<string> files)
+        {
+            foreach (var file in Directory.GetFiles(from))
+            {
+                if (!IsExcludedFromPayload(file)) files.Add(file);
+            }
+            foreach (var dir in Directory.GetDirectories(from))
+            {
+                CollectFiles(dir, files);
+            }
         }
 
         private static void CopyTree(string from, string to)
@@ -312,9 +416,8 @@ namespace JswjSetup
             Directory.CreateDirectory(to);
             foreach (var file in Directory.GetFiles(from))
             {
-                string name = Path.GetFileName(file);
-                if (name.Equals("Setup.exe", StringComparison.OrdinalIgnoreCase)) continue;
-                File.Copy(file, Path.Combine(to, name), true);
+                if (IsExcludedFromPayload(file)) continue;
+                File.Copy(file, Path.Combine(to, Path.GetFileName(file)), true);
             }
             foreach (var dir in Directory.GetDirectories(from))
             {
@@ -344,7 +447,7 @@ namespace JswjSetup
             root["dsh"] = dsh;
 
             File.WriteAllText(pkgPath, ser.Serialize(root), new UTF8Encoding(false));
-            log("已登记 bundle：" + DepName);
+            log("已登记插件清单：" + DepName);
         }
 
         private static Dictionary<string, object> GetDict(Dictionary<string, object> parent, string key)
@@ -451,130 +554,547 @@ namespace JswjSetup
             log("已写入凭据配置");
         }
 
-        private static string Timestamp()
+        // ---------- LibreOffice 可选组件 ----------
+
+        /** 返回已安装的 soffice.exe 路径；未安装返回 null。 */
+        public static string FindLibreOffice()
         {
-            return DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            foreach (var path in LibreOfficeExe)
+            {
+                if (File.Exists(path)) return path;
+            }
+            return null;
+        }
+
+        private void CheckCancelled()
+        {
+            if (CancelCheck != null && CancelCheck()) throw new OperationCanceledException();
+        }
+
+        /** 下载官方 MSI 并静默安装。任意环节失败都抛异常，由界面标红后继续后续步骤。 */
+        public void InstallLibreOffice(Action<string> log, Action<long, long> progress)
+        {
+            log("开始安装 LibreOffice（约 400 MB，需要联网）");
+            string dir = Path.Combine(Path.GetTempPath(), "jswj-setup-libreoffice");
+            Directory.CreateDirectory(dir);
+            string msi = Path.Combine(dir, LibreOfficeMsiName);
+            try
+            {
+                log("下载 " + LibreOfficeMsiUrl);
+                DownloadFile(LibreOfficeMsiUrl, msi, progress);
+                var info = new FileInfo(msi);
+                log("下载完成：" + (info.Length / 1024 / 1024) + " MB");
+                if (info.Length < 1024 * 1024)
+                    throw new ApplicationException("下载文件不完整（" + info.Length + " 字节），可能网络中断");
+
+                log("静默安装：" + msi);
+                int code = RunMsiexec(msi);
+                if (code == 1603)
+                    throw new ApplicationException("msiexec 返回 1603（安装失败，常见原因是缺少管理员权限）");
+                if (code == 1625 || code == 1619)
+                    throw new ApplicationException("msiexec 返回 " + code + "（被系统策略拦截或安装包不可读）");
+                if (code != 0 && code != 3010)
+                    throw new ApplicationException("msiexec 返回错误码 " + code);
+
+                string found = FindLibreOffice();
+                if (found == null)
+                    throw new ApplicationException("安装程序已返回成功，但仍未找到 soffice.exe；可能未完成授权");
+                log("已安装 LibreOffice：" + found);
+            }
+            finally
+            {
+                try { if (File.Exists(msi)) File.Delete(msi); } catch { }
+                try
+                {
+                    if (Directory.Exists(dir) && Directory.GetFiles(dir).Length == 0 && Directory.GetDirectories(dir).Length == 0)
+                        Directory.Delete(dir);
+                }
+                catch { }
+            }
+        }
+
+        /** 流式下载，按「已接收字节 / 总长度」回报进度。 */
+        private void DownloadFile(string url, string dest, Action<long, long> progress)
+        {
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.UserAgent = "JSWJ-Setup/1.0 (Windows)";
+            request.Timeout = 60000;
+            request.ReadWriteTimeout = 60000;
+            request.AllowAutoRedirect = true;
+
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var input = response.GetResponseStream())
+            using (var output = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                long total = response.ContentLength;
+                long received = 0;
+                var buffer = new byte[81920];
+                int n;
+                while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    CheckCancelled();
+                    output.Write(buffer, 0, n);
+                    received += n;
+                    if (progress != null) progress(received, total);
+                }
+                if (progress != null) progress(received, total);
+            }
+        }
+
+        private static int RunMsiexec(string msi)
+        {
+            var psi = new ProcessStartInfo("msiexec.exe", "/i \"" + msi + "\" /qn /norestart");
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            var proc = Process.Start(psi);
+            proc.WaitForExit();
+            return proc.ExitCode;
         }
     }
 
     internal sealed class InstallForm : Form
     {
+        private static readonly string[] StepTitles = new string[]
+        {
+            "检查安装包",
+            "复制插件文件",
+            "登记插件清单",
+            "建立目录联接",
+            "写入配置",
+            "安装 LibreOffice 组件"
+        };
+
+        private const int StepCheck = 0;
+        private const int StepCopy = 1;
+        private const int StepBundle = 2;
+        private const int StepLink = 3;
+        private const int StepConfig = 4;
+        private const int StepLibre = 5;
+
+        // 步骤状态记在数组里，供工作线程判断；界面文字另行更新。
+        private const int StatePending = 0;
+        private const int StateRunning = 1;
+        private const int StateDone = 2;
+        private const int StateSkipped = 3;
+        private const int StateFailed = 4;
+
+        private static readonly Color PendingColor = Color.FromArgb(150, 155, 165);
+        private static readonly Color SkipColor = Color.FromArgb(184, 189, 196);
+        private static readonly Color RunningColor = Color.FromArgb(51, 112, 255);
+        private static readonly Color DoneColor = Color.FromArgb(52, 168, 83);
+        private static readonly Color FailedColor = Color.FromArgb(245, 63, 63);
+        private static readonly Color HintColor = Color.FromArgb(100, 106, 115);
+        private static readonly Color DescColor = Color.FromArgb(140, 146, 155);
+        private static readonly Color SoftColor = Color.FromArgb(178, 184, 192);
+        private static readonly Color BodyColor = Color.FromArgb(60, 66, 75);
+
+#if !BUNDLED
         private readonly TextBox _appId = new TextBox();
         private readonly TextBox _appSecret = new TextBox();
+#endif
+        private readonly CheckBox _compPlugin = new CheckBox();
+        private readonly CheckBox _compLibre = new CheckBox();
         private readonly Button _install = new Button();
         private readonly Button _uninstall = new Button();
         private readonly Button _cancel = new Button();
         private readonly TextBox _log = new TextBox();
-        private readonly Installer _installer = new Installer();
+        private readonly Label _logHint = new Label();
         private readonly Label _status = new Label();
+        private readonly Label[] _stepNames = new Label[StepTitles.Length];
+        private readonly Label[] _stepStatus = new Label[StepTitles.Length];
+        private readonly int[] _stepState = new int[StepTitles.Length];
+        private readonly ToolTip _toolTip = new ToolTip();
+        private readonly Installer _installer = new Installer();
+
+        private volatile bool _cancelled;
+        private volatile bool _closed;
+        private bool _running;
+        private int _copyPct = -1;
+        private int _librePct = -1;
 
         public InstallForm()
         {
-            Text = "技术文件起草（JSWJ_DraftbyDSH）安装";
-            ClientSize = new Size(560, 470);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
+            Text = "技术文件起草 · 安装程序";
+            ClientSize = new Size(620, 640);
+            MinimumSize = new Size(640, 560);
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = true;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Microsoft YaHei UI", 9f);
+            FormClosing += OnFormClosing;
+
+            int y = 16;
 
             var title = new Label();
-            title.Text = string.IsNullOrEmpty(_installer.Version)
-                ? "技术文件起草（JSWJ_DraftbyDSH）"
-                : "技术文件起草（JSWJ_DraftbyDSH）" + _installer.Version;
-            title.Font = new Font("Microsoft YaHei UI", 13f, FontStyle.Bold);
-            title.SetBounds(24, 20, 500, 30);
+            title.Text = "技术文件起草 · 安装程序";
+            title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
+            title.SetBounds(24, y, 572, 26);
+            title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(title);
+            y += 28;
+
+            var subtitle = new Label();
+            subtitle.Text = "适用于 DeepSeek Harness 桌面端 · v0.7.0-beta.7";
+            subtitle.ForeColor = HintColor;
+            subtitle.SetBounds(24, y, 572, 17);
+            subtitle.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(subtitle);
+            y += 20;
 
             var note = new Label();
+#if BUNDLED
+            // 内置凭据版本：不显示输入框，安装即完成。
+            note.Text = "内置凭据已配置，直接点「开始安装」即可。安装前请完全退出 DSH。";
+#else
             note.Text = "安装前请完全退出 DSH。安装需要飞书应用的 appId 与 appSecret（仅保存在本机）。";
-            note.ForeColor = Color.FromArgb(100, 106, 115);
-            note.SetBounds(24, 54, 500, 34);
+#endif
+            note.ForeColor = HintColor;
+            note.SetBounds(24, y, 572, 30);
+            note.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(note);
+            y += 32;
 
-            var appIdLabel = LabelAt("feishu appId", 24, 98);
+#if !BUNDLED
+            var appIdLabel = LabelAt("feishu appId");
+            appIdLabel.SetBounds(24, y, 296, 17);
             Controls.Add(appIdLabel);
-            _appId.SetBounds(24, 120, 500, 26);
+
+            _appId.SetBounds(24, y + 18, 296, 24);
             _appId.Text = "cli_";
             Controls.Add(_appId);
 
-            var secretLabel = LabelAt("appSecret", 24, 158);
+            var secretLabel = LabelAt("appSecret");
+            secretLabel.SetBounds(332, y, 264, 17);
             Controls.Add(secretLabel);
-            _appSecret.SetBounds(24, 180, 500, 26);
+
+            _appSecret.SetBounds(332, y + 18, 264, 24);
             _appSecret.UseSystemPasswordChar = true;
             Controls.Add(_appSecret);
-
-#if BUNDLED
-            // 内置凭据版本：不显示输入框，安装即完成。
-            appIdLabel.Visible = false;
-            secretLabel.Visible = false;
-            _appId.Visible = false;
-            _appSecret.Visible = false;
-            _appId.Text = BundledCreds.AppId;
-            _appSecret.Text = BundledCreds.AppSecret;
-            note.Text = "内置凭据已配置，直接点「开始安装」即可。安装前请完全退出 DSH。";
-            _install.Top -= 120;
-            _cancel.Top -= 120;
-            _uninstall.Top -= 120;
-            _status.Top -= 120;
-            _log.Top -= 120;
-            _log.Height += 120;
+            y += 48;
 #endif
 
+            var compHeader = new Label();
+            compHeader.Text = "本安装程序将安装以下组件：";
+            compHeader.ForeColor = HintColor;
+            compHeader.SetBounds(24, y, 572, 18);
+            compHeader.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(compHeader);
+            y += 18;
+
+            _compPlugin.Text = "插件本体";
+            _compPlugin.Checked = true;
+            _compPlugin.AutoCheck = false; // 固定勾选：点不动，但勾选标记保持正常可见
+            _compPlugin.TabStop = false;
+            _compPlugin.ForeColor = Color.FromArgb(120, 126, 135); // 灰字表示固定项
+            _compPlugin.SetBounds(24, y, 300, 22);
+            _toolTip.SetToolTip(_compPlugin, "固定包含，不可取消");
+            Controls.Add(_compPlugin);
+            AddComponentMeta(y, "1 MB", "", "工具、技能、模板与页面渲染组件");
+            y += 44;
+
+            _compLibre.Text = "LibreOffice 文档转换组件";
+            _compLibre.Checked = false; // 默认不勾选：体积大、要联网、需要管理员权限
+            _compLibre.SetBounds(24, y, 300, 22);
+            Controls.Add(_compLibre);
+            AddComponentMeta(y, "约 400 MB", "· 可选", "把 Word 转成分页图片，供原文精确定位；需联网下载，约 3–5 分钟");
+            y += 44;
+
+            string fullPath = _installer.DisplayInstallDir;
+            var pathLabel = new Label();
+            pathLabel.Font = new Font("Microsoft YaHei UI", 8.5f);
+            pathLabel.ForeColor = DescColor;
+            pathLabel.AutoEllipsis = true;
+            pathLabel.SetBounds(24, y, 572, 17);
+            pathLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            int prefixWidth = TextRenderer.MeasureText("安装到：", pathLabel.Font).Width;
+            pathLabel.Text = "安装到：" + ElideMiddle(fullPath, pathLabel.Font, 572 - prefixWidth - 8);
+            _toolTip.SetToolTip(pathLabel, fullPath);
+            Controls.Add(pathLabel);
+            y += 18;
+
             _install.Text = "开始安装";
-            _install.SetBounds(24, 222, 150, 36);
-            _install.BackColor = Color.FromArgb(51, 112, 255);
+            _install.SetBounds(24, y, 150, 34);
+            _install.BackColor = RunningColor;
             _install.ForeColor = Color.White;
             _install.FlatStyle = FlatStyle.Flat;
             _install.Click += OnInstall;
             Controls.Add(_install);
 
             _cancel.Text = "取消";
-            _cancel.SetBounds(186, 222, 96, 36);
-            _cancel.Click += delegate { Close(); };
+            _cancel.SetBounds(186, y, 96, 34);
+            _cancel.Click += OnCancel;
             Controls.Add(_cancel);
 
+            // 卸载是破坏性操作：右下角、次要样式，与主操作拉开距离。
             _uninstall.Text = "卸载";
-            _uninstall.SetBounds(432, 222, 92, 36);
+            _uninstall.SetBounds(504, y, 92, 34);
+            _uninstall.BackColor = Color.White;
+            _uninstall.ForeColor = Color.FromArgb(95, 100, 110);
             _uninstall.FlatStyle = FlatStyle.Flat;
+            _uninstall.FlatAppearance.BorderSize = 1;
+            _uninstall.FlatAppearance.BorderColor = Color.FromArgb(200, 205, 213);
+            _uninstall.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _uninstall.Click += OnUninstall;
             Controls.Add(_uninstall);
+            y += 38;
 
-            _status.SetBounds(24, 268, 500, 22);
-            _status.ForeColor = Color.FromArgb(100, 106, 115);
+            int stepTop = y + 6;
+            for (int i = 0; i < StepTitles.Length; i++)
+            {
+                var name = new Label();
+                name.Text = StepTitles[i];
+                name.ForeColor = BodyColor;
+                name.AutoEllipsis = true;
+                name.SetBounds(24, stepTop + i * 19, 400, 19);
+                name.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                Controls.Add(name);
+                _stepNames[i] = name;
+
+                var state = new Label();
+                state.Text = "待执行";
+                state.ForeColor = PendingColor;
+                state.TextAlign = ContentAlignment.MiddleRight;
+                state.AutoEllipsis = true;
+                state.SetBounds(444, stepTop + i * 19, 152, 19);
+                state.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                Controls.Add(state);
+                _stepStatus[i] = state;
+                _stepState[i] = StatePending;
+            }
+
+            int sepTop = stepTop + StepTitles.Length * 19 + 6;
+            var sep = new Panel();
+            sep.BackColor = Color.FromArgb(214, 218, 224);
+            sep.SetBounds(24, sepTop, 572, 1);
+            sep.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(sep);
+
+            _status.SetBounds(24, sepTop + 8, 572, 18);
+            _status.ForeColor = HintColor;
+            _status.AutoEllipsis = true;
+            _status.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(_status);
 
-            _log.SetBounds(24, 294, 500, 150);
+            int logTop = sepTop + 8 + 18 + 6;
+            int logHeight = Math.Max(40, ClientSize.Height - logTop - 16);
+            _log.SetBounds(24, logTop, 572, logHeight);
             _log.Multiline = true;
             _log.ReadOnly = true;
             _log.ScrollBars = ScrollBars.Vertical;
             _log.BackColor = Color.FromArgb(245, 246, 247);
             _log.BorderStyle = BorderStyle.FixedSingle;
+            _log.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(_log);
+
+            // 日志为空时显示占位说明，写入第一行后隐藏。
+            _logHint.Text = "安装日志将显示在这里";
+            _logHint.ForeColor = SoftColor;
+            _logHint.AutoSize = false;
+            _logHint.SetBounds(_log.Left + 8, _log.Top + 6, 300, 18);
+            _logHint.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            Controls.Add(_logHint);
+            _logHint.BringToFront();
         }
 
-        private static Label LabelAt(string text, int x, int y)
+        private static Label LabelAt(string text)
         {
             var l = new Label();
             l.Text = text;
-            l.SetBounds(x, y, 300, 20);
             return l;
+        }
+
+        /** 组件行第二行：右侧体积（右对齐）+ 可选标记 + 下一行小字说明。 */
+        private void AddComponentMeta(int y, string sizeText, string optionalText, string descText)
+        {
+            var font = new Font("Microsoft YaHei UI", 8.5f);
+            const int right = 596;
+            int optionalWidth = 0;
+
+            if (!string.IsNullOrEmpty(optionalText))
+            {
+                optionalWidth = TextRenderer.MeasureText(optionalText, font).Width;
+                var optional = new Label();
+                optional.Text = optionalText;
+                optional.Font = font;
+                optional.ForeColor = SoftColor;
+                optional.TextAlign = ContentAlignment.MiddleLeft;
+                optional.SetBounds(right - optionalWidth, y + 2, optionalWidth, 18);
+                optional.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                Controls.Add(optional);
+            }
+
+            int sizeWidth = TextRenderer.MeasureText(sizeText, font).Width;
+            var size = new Label();
+            size.Text = sizeText;
+            size.Font = font;
+            size.ForeColor = DescColor;
+            size.TextAlign = ContentAlignment.MiddleRight;
+            size.SetBounds(right - optionalWidth - sizeWidth, y + 2, sizeWidth, 18);
+            size.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            Controls.Add(size);
+
+            var desc = new Label();
+            desc.Text = descText;
+            desc.Font = new Font("Microsoft YaHei UI", 8.25f);
+            desc.ForeColor = DescColor;
+            desc.AutoEllipsis = true;
+            desc.SetBounds(44, y + 24, 552, 17);
+            desc.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(desc);
+        }
+
+        /** 路径过长时省略中间，保留开头与结尾。 */
+        private static string ElideMiddle(string text, Font font, int maxWidth)
+        {
+            if (text == null) return "";
+            if (TextRenderer.MeasureText(text, font).Width <= maxWidth) return text;
+
+            int keepHead = 18;
+            int keepTail = 18;
+            if (keepHead + keepTail + 1 > text.Length) return text;
+            string candidate = text.Substring(0, keepHead) + "…" + text.Substring(text.Length - keepTail);
+            while (TextRenderer.MeasureText(candidate, font).Width > maxWidth && keepHead + keepTail > 12)
+            {
+                if (keepHead > keepTail) keepHead--; else keepTail--;
+                candidate = text.Substring(0, keepHead) + "…" + text.Substring(text.Length - keepTail);
+            }
+            return candidate;
+        }
+
+        private void OnFormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (_running && !_cancelled)
+            {
+                if (MessageBox.Show(this, "安装正在进行，退出将中断安装。确定退出？", "确认退出",
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                _cancelled = true;
+            }
+            _closed = true;
+        }
+
+        /** 跨线程更新界面；窗口已关闭时静默丢弃。 */
+        private void Ui(Action action)
+        {
+            if (_closed) return;
+            try
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(action);
+                    return;
+                }
+                action();
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+        }
+
+        private void SetStepStatus(int index, string text, Color color)
+        {
+            Ui(delegate
+            {
+                _stepStatus[index].Text = text;
+                _stepStatus[index].ForeColor = color;
+            });
+        }
+
+        /** 安装/卸载进行中：主操作与卸载都禁用，只留取消。 */
+        private void SetBusy(bool busy)
+        {
+            _install.Enabled = !busy;
+            _uninstall.Enabled = !busy;
+            // FlatStyle.Flat 的自定义底色不会随禁用变灰，这里手动调浅，避免看起来还能点。
+            _install.BackColor = busy ? Color.FromArgb(176, 197, 240) : RunningColor;
+        }
+
+        private void StepRunning(int index)
+        {
+            _stepState[index] = StateRunning;
+            SetStepStatus(index, "执行中", RunningColor);
+        }
+
+        private void StepRunningPct(int index, int percent)
+        {
+            if (percent < 0) percent = 0;
+            if (percent > 100) percent = 100;
+            _stepState[index] = StateRunning;
+            SetStepStatus(index, "执行中 " + percent + "%", RunningColor);
+        }
+
+        private void StepDone(int index)
+        {
+            _stepState[index] = StateDone;
+            SetStepStatus(index, "完成", DoneColor);
+        }
+
+        private void StepSkipped(int index, string reason)
+        {
+            _stepState[index] = StateSkipped;
+            SetStepStatus(index, "跳过", SkipColor);
+        }
+
+        private void StepFailed(int index, string reason)
+        {
+            _stepState[index] = StateFailed;
+            SetStepStatus(index, "失败：" + reason, FailedColor);
         }
 
         private void Append(string line)
         {
-            if (InvokeRequired)
+            Ui(delegate
             {
-                BeginInvoke(new Action<string>(Append), new object[] { line });
+                _log.AppendText((_log.Text.Length > 0 ? Environment.NewLine : "") + line);
+                _logHint.Visible = _log.Text.Length == 0;
+            });
+        }
+
+        private void ClearLog()
+        {
+            Ui(delegate
+            {
+                _log.Clear();
+                _logHint.Visible = true;
+            });
+        }
+
+        private void ReportProgress(int index, long done, long total, ref int last)
+        {
+            int pct = total > 0 ? (int)(done * 100 / total) : -1;
+            if (pct == last) return;
+            last = pct;
+            if (pct < 0) return;
+            StepRunningPct(index, pct);
+        }
+
+        private void OnCancel(object sender, EventArgs e)
+        {
+            if (_running)
+            {
+                _cancelled = true;
+                _cancel.Enabled = false;
+                _status.Text = "正在取消…";
+                _status.ForeColor = PendingColor;
+                Append("已请求取消，当前步骤结束后停止。");
                 return;
             }
-            _log.AppendText((_log.Text.Length > 0 ? Environment.NewLine : "") + line);
+            Close();
         }
 
         private void OnInstall(object sender, EventArgs e)
         {
-            string appId = _appId.Text.Trim();
-            string appSecret = _appSecret.Text.Trim();
+            string appId;
+            string appSecret;
+#if BUNDLED
+            appId = BundledCreds.AppId;
+            appSecret = BundledCreds.AppSecret;
+#else
+            appId = _appId.Text.Trim();
+            appSecret = _appSecret.Text.Trim();
             if (appId.Length == 0 || appSecret.Length == 0)
             {
                 MessageBox.Show(this, "appId 与 appSecret 都不能为空。", "缺少信息", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -585,95 +1105,279 @@ namespace JswjSetup
                 var r = MessageBox.Show(this, "appId 通常以 cli_ 开头，确认继续？", "确认", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
                 if (r != DialogResult.OK) return;
             }
+#endif
+            bool withLibreOffice = _compLibre.Checked;
 
-            _install.Enabled = false;
-            _cancel.Enabled = false;
-            _appId.ReadOnly = true;
-            _appSecret.ReadOnly = true;
-            _log.Clear();
+            _running = true;
+            _cancelled = false;
+            _copyPct = -1;
+            _librePct = -1;
+            SetBusy(true);
+            _cancel.Enabled = true;
+            _cancel.Text = "取消";
+            _compLibre.Enabled = false;
+            ClearLog();
             _status.Text = "正在安装…";
-
-            var worker = new Thread(delegate ()
+            _status.ForeColor = HintColor;
+            for (int i = 0; i < StepTitles.Length; i++)
             {
+                _stepState[i] = StatePending;
+                SetStepStatus(i, "待执行", PendingColor);
+            }
+
+            // 复制与下载都走这里检查取消，避免安装中途无法退出。
+            _installer.CancelCheck = delegate { return _cancelled; };
+
+            var worker = new Thread(delegate()
+            {
+                var failed = new List<string>();
+                bool cancelled = false;
+                bool touchedPlugin = false;
+
                 try
                 {
-                    Append("检查安装包完整性");
-                    _installer.ValidatePayload();
-                    Append("检查运行环境");
-                    _installer.EnsureDshClosed();
-                    Append("DSH 已退出");
-                    _installer.CopyPayload(Append);
-                    _installer.RegisterBundle(Append);
-                    _installer.LinkInstallDir(Append);
-                    _installer.WriteConfig(appId, appSecret, Append);
-                    Append("");
-                    Append("安装完成。请重新打开 DSH，左侧会出现「技术文件起草」。");
-                    Done(true);
+                    bool payloadOk = RunStep(StepCheck, delegate
+                    {
+                        _installer.ValidatePayload();
+                        _installer.EnsureDshClosed();
+                        Append("安装包检查通过，DSH 已退出");
+                    }, failed);
+
+                    if (!payloadOk)
+                    {
+                        // 安装包或环境不满足，后续步骤没有意义，统一标为跳过。
+                        for (int i = 1; i < StepTitles.Length; i++) StepSkipped(i, "前置检查未通过");
+                        Append("前置检查未通过，未做任何改动。");
+                    }
+                    else
+                    {
+                        touchedPlugin = true;
+                        RunStep(StepCopy, delegate
+                        {
+                            _installer.CopyPayload(Append, delegate(long done, long total)
+                            {
+                                ReportProgress(StepCopy, done, total, ref _copyPct);
+                            });
+                        }, failed);
+
+                        RunStep(StepBundle, delegate { _installer.RegisterBundle(Append); }, failed);
+                        RunStep(StepLink, delegate { _installer.LinkInstallDir(Append); }, failed);
+                        RunStep(StepConfig, delegate { _installer.WriteConfig(appId, appSecret, Append); }, failed);
+
+                        if (!withLibreOffice)
+                        {
+                            StepSkipped(StepLibre, "未勾选");
+                            Append("未勾选 LibreOffice，跳过下载与安装。");
+                        }
+                        else
+                        {
+                            string existing = Installer.FindLibreOffice();
+                            if (existing != null)
+                            {
+                                _stepState[StepLibre] = StateDone;
+                                SetStepStatus(StepLibre, "已安装", DoneColor);
+                                Append("已检测到 LibreOffice：" + existing + "，跳过下载。");
+                            }
+                            else
+                            {
+                                RunStep(StepLibre, delegate
+                                {
+                                    _installer.InstallLibreOffice(Append, delegate(long done, long total)
+                                    {
+                                        ReportProgress(StepLibre, done, total, ref _librePct);
+                                    });
+                                }, failed);
+                            }
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                    Append("安装已取消。");
+                    for (int i = 0; i < StepTitles.Length; i++)
+                    {
+                        if (_stepState[i] == StatePending) StepSkipped(i, "已取消");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Append("");
-                    Append("安装失败：" + ex.Message);
-                    Append("正在回滚到安装前状态…");
-                    _installer.Rollback(Append);
-                    Done(false);
+                    failed.Add("安装");
+                    Append("安装异常终止：" + ex.Message);
                 }
+
+                bool pluginFailed = false;
+                foreach (var name in failed)
+                {
+                    if (name != StepTitles[StepLibre]) pluginFailed = true;
+                }
+                if (touchedPlugin && (pluginFailed || cancelled))
+                {
+                    Append("");
+                    Append("回滚对 profile 配置的改动…");
+                    _installer.Rollback(Append);
+                }
+
+                Finish(failed, cancelled);
             });
             worker.IsBackground = true;
             worker.Start();
         }
 
+        /** 执行一个步骤：失败只记录，不中断后续步骤。 */
+        private bool RunStep(int index, Action work, List<string> failed)
+        {
+            if (_cancelled)
+            {
+                StepSkipped(index, "已取消");
+                return false;
+            }
+            StepRunning(index);
+            try
+            {
+                work();
+                StepDone(index);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                StepSkipped(index, "已取消");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                StepFailed(index, ex.Message);
+                Append("[" + StepTitles[index] + "] 失败：" + ex.Message);
+                failed.Add(StepTitles[index]);
+                return false;
+            }
+        }
+
+        private void Finish(List<string> failed, bool cancelled)
+        {
+            Ui(delegate
+            {
+                _running = false;
+                _installer.CancelCheck = null;
+                SetBusy(false);
+                _cancel.Enabled = true;
+                _cancel.Text = "关闭";
+                _compLibre.Enabled = true;
+
+                if (cancelled)
+                {
+                    _status.Text = "已取消，未完成的部分需要重新安装。";
+                    _status.ForeColor = PendingColor;
+                    MessageBox.Show(this, "安装已取消。请查看日志中已完成的步骤。", "已取消",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else if (failed.Count == 1 && failed[0] == StepTitles[StepCheck])
+                {
+                    _status.Text = "安装包检查未通过，未做任何改动。";
+                    _status.ForeColor = FailedColor;
+                    MessageBox.Show(this, "安装包检查未通过，请确认安装程序与插件文件在同一目录。", "未完成",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else if (failed.Count > 0)
+                {
+                    _status.Text = "以下组件未完成：" + string.Join("、", failed.ToArray());
+                    _status.ForeColor = FailedColor;
+                    MessageBox.Show(this, "安装未完成。未完成的组件与原因见列表中红色行。", "未完成",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    _status.Text = "安装完成，请重新打开 DSH。";
+                    _status.ForeColor = DoneColor;
+                    MessageBox.Show(this, "安装完成。请重新打开 DSH。", "完成",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            });
+        }
+
+        /** 卸载前确认：默认焦点在「取消」，避免误按。 */
+        private bool ConfirmUninstall()
+        {
+            using (var dlg = new Form())
+            {
+                dlg.Text = "确认卸载";
+                dlg.Font = Font;
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.MaximizeBox = false;
+                dlg.MinimizeBox = false;
+                dlg.ShowInTaskbar = false;
+                dlg.ClientSize = new Size(400, 150);
+
+                var text = new Label();
+                text.Text = "将移除插件文件、目录联接与配置。知识库中的文档不受影响。确定卸载吗？";
+                text.SetBounds(20, 20, 360, 56);
+                dlg.Controls.Add(text);
+
+                var ok = new Button();
+                ok.Text = "卸载";
+                ok.SetBounds(180, 96, 90, 32);
+                ok.DialogResult = DialogResult.OK;
+                dlg.Controls.Add(ok);
+
+                var no = new Button();
+                no.Text = "取消";
+                no.SetBounds(282, 96, 90, 32);
+                no.DialogResult = DialogResult.Cancel;
+                dlg.Controls.Add(no);
+
+                dlg.AcceptButton = null;
+                dlg.CancelButton = no;
+                dlg.Shown += delegate { no.Focus(); };
+                return dlg.ShowDialog(this) == DialogResult.OK;
+            }
+        }
+
         private void OnUninstall(object sender, EventArgs e)
         {
-            if (MessageBox.Show(this, "将移除插件与其配置（保留知识库中的文件）。确认卸载？", "确认卸载", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
-                return;
+            if (!ConfirmUninstall()) return;
 
-            _install.Enabled = false;
+            _running = true;
+            _cancelled = false;
+            SetBusy(true);
             _cancel.Enabled = false;
-            _uninstall.Enabled = false;
-            _log.Clear();
+            ClearLog();
             _status.Text = "正在卸载…";
+            _status.ForeColor = HintColor;
 
-            var worker = new Thread(delegate ()
+            var worker = new Thread(delegate()
             {
                 try
                 {
                     _installer.EnsureDshClosed();
                     _installer.Uninstall(Append);
-                    Done(true);
+                    Ui(delegate
+                    {
+                        _running = false;
+                        _status.Text = "卸载完成，请重新打开 DSH。";
+                        _status.ForeColor = DoneColor;
+                        SetBusy(false);
+                        _cancel.Enabled = true;
+                        _cancel.Text = "关闭";
+                    });
                 }
                 catch (Exception ex)
                 {
                     Append("");
                     Append("卸载失败：" + ex.Message);
-                    Done(false);
+                    Ui(delegate
+                    {
+                        _running = false;
+                        _status.Text = "卸载失败：" + ex.Message;
+                        _status.ForeColor = FailedColor;
+                        SetBusy(false);
+                        _cancel.Enabled = true;
+                        _cancel.Text = "关闭";
+                    });
                 }
             });
             worker.IsBackground = true;
             worker.Start();
-        }
-
-        private void Done(bool ok)
-        {
-            if (InvokeRequired)
-            {
-                BeginInvoke(new Action<bool>(Done), new object[] { ok });
-                return;
-            }
-            _status.Text = ok ? "安装完成" : "安装失败";
-            _status.ForeColor = ok ? Color.FromArgb(52, 168, 83) : Color.FromArgb(245, 63, 63);
-            _install.Enabled = true;
-            _cancel.Enabled = true;
-            _uninstall.Enabled = true;
-            _cancel.Text = "关闭";
-            if (ok)
-            {
-                MessageBox.Show(this, "安装完成。请重新打开 DSH。", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            else
-            {
-                MessageBox.Show(this, "安装未完成，请查看窗口中的提示。", "失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
         }
     }
 }

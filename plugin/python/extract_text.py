@@ -2,10 +2,13 @@
 """提取 docx 纯文本与内嵌图片，供资料上传后解析使用。"""
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 from docx import Document
+
+FIGURE_CAPTION = re.compile(r"^图\s*\d+(?:\s*[-－—.．]\s*\d+)*")
 
 
 def main() -> None:
@@ -22,10 +25,13 @@ def main() -> None:
 
     doc = Document(args.file)
     parts = []
+    captions = []
     for paragraph in doc.paragraphs:
         text = paragraph.text.strip()
         if text:
             parts.append(text)
+            if FIGURE_CAPTION.match(text):
+                captions.append(text)
     for table in doc.tables:
         for row in table.rows:
             cells = [cell.text.strip() for cell in row.cells]
@@ -51,7 +57,16 @@ def main() -> None:
             path.write_bytes(part.blob)
             images.append(str(path))
 
-    print("JSWJ_TEXT " + json.dumps({"text": text, "chars": len(text), "images": images}, ensure_ascii=False))
+    # 图题注按段落出现顺序与图片文件顺序一一对应；对不上的保留文件、题注留空。
+    figures = [
+        {"file": Path(image).name, "caption": captions[index] if index < len(captions) else ""}
+        for index, image in enumerate(images)
+    ]
+
+    print(
+        "JSWJ_TEXT "
+        + json.dumps({"text": text, "chars": len(text), "images": images, "figures": figures}, ensure_ascii=False)
+    )
 
 
 if __name__ == "__main__":

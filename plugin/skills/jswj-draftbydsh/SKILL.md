@@ -52,7 +52,16 @@ description: 执行「技术文件起草（JSWJ_DraftbyDSH）」的技术文件�
 |---|---|
 | ⑤ 生成 | `{"data":{"generation":{"status":"done","note":"..."},"draft":{"markdown":"# 标题\n...","ready":true,"version":1,"confirmed":false}}}`；自检与修订在同一回合内完成 |
 | ⑥ 成稿确认 | 按 `draft.comments` 定向修订后写回 `draft.markdown`、`draft.version` 加 1、`draft.ready` true、`draft.confirmed` false |
-| ④ 预审 | `{"data":{"review":{"issues":[{severity:"严重"或"建议",location,problem,basis,suggestion}]}}}` |
+| ④ 预审 | `{"data":{"review":{"issues":[{severity:"严重"或"建议",location,problem,basis,suggestion,evidence:{quote,section,figure}}]}}}` |
+
+
+**评审意见必须带证据（evidence）**，用于在页面上回显原文与位置：
+
+- `quote`：受审文件里连续 20–40 字原文，逐字复制，不改写、不拼接两处
+- `section`：章节号，如 `6.1`、`7.3`
+- `figure`：图类意见的 figure 可填 `figures.json` 中对应条目的 `file`（如 `img-01.png`）；也可填图号（如 `图 6-1`）或题注，页面会按题注匹配。非图类留空
+- 图类意见（分辨率、复用、图例缺失）以 figure 定位，quote 填图题注
+- quote 必须能在任务 sources[].textPath 或受审文件解析出的 text.txt 里原样搜到；搜不到说明摘错了，须重摘
 
 任务文件在 `~/.dsh/jswj-tasks/<任务号>.json`，不要手工改；只通过工具读写。
 

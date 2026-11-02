@@ -13,7 +13,7 @@ const name = "jswj-draft";
 const inject = ["tools", "webServer"];
 
 const API = "https://open.feishu.cn/open-apis";
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 60 * 1024 * 1024;
 
 /**
  * defineTool 兜底实现。
@@ -403,7 +403,7 @@ async function installHarmonyFont(cfg) {
 
 async function extractSourceText(cfg, filePath, ext, imagesDir = "") {
   if (ext === ".md" || ext === ".markdown" || ext === ".txt") {
-    return { text: await readFile(filePath, "utf8"), images: [] };
+    return { text: await readFile(filePath, "utf8"), images: [], figures: [] };
   }
   if (ext === ".docx") {
     const python = await pickPython(cfg);
@@ -446,7 +446,11 @@ async function extractSourceText(cfg, filePath, ext, imagesDir = "") {
     if (!line) fail("docx 解析失败：解析器没有返回文本");
     try {
       const parsed = JSON.parse(line.slice("JSWJ_TEXT ".length));
-      return { text: parsed.text ?? "", images: Array.isArray(parsed.images) ? parsed.images : [] };
+      return {
+        text: parsed.text ?? "",
+        images: Array.isArray(parsed.images) ? parsed.images : [],
+        figures: Array.isArray(parsed.figures) ? parsed.figures : [],
+      };
     } catch {
       fail("docx 解析失败：返回结果无法解析");
     }
@@ -558,7 +562,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
       }
     }
 
-    const body = JSON.parse(await readJsonBody(req, 30 * 1024 * 1024));
+    const body = JSON.parse(await readJsonBody(req, 90 * 1024 * 1024));
     const tool = (toolName) => {
       const found = ctx.tools.get(toolName);
       if (!found) throw new Error(`工具不可用：${toolName}`);
@@ -881,7 +885,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         if (!tplRaw) throw new Error("缺少文件内容");
         const tplBuffer = Buffer.from(tplRaw, "base64");
         if (tplBuffer.length === 0) throw new Error("文件内容为空");
-        if (tplBuffer.length > MAX_UPLOAD_BYTES) throw new Error("模板文件超过 20 MB");
+        if (tplBuffer.length > MAX_UPLOAD_BYTES) throw new Error("模板文件超过 60 MB");
 
         const tplTaskId = String(body.taskId ?? "common");
         const tplDir = join(homedir(), ".dsh", "jswj-templates", tplTaskId);
@@ -907,7 +911,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         if (!raw) throw new Error("缺少文件内容");
         const buffer = Buffer.from(raw, "base64");
         if (buffer.length === 0) throw new Error("文件内容为空");
-        if (buffer.length > MAX_UPLOAD_BYTES) throw new Error("文件超过 20 MB，请压缩或拆分");
+        if (buffer.length > MAX_UPLOAD_BYTES) throw new Error("文件超过 60 MB，请压缩图片或拆分后再上传");
 
         const tmp = join(tmpdir(), `jswj-src-${Date.now()}${ext}`);
         await writeFile(tmp, buffer);
@@ -919,6 +923,28 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           const text = parsed.text;
           const textPath = join(dir, `${safeName(name, "资料")}.txt`);
           await writeFile(textPath, text, "utf8");
+          if (ext === ".docx" && body.noStore) {
+            // 只有受审文件（noStore）才留存原件与图题注；参考资料上传不会覆盖它们。
+            await writeFile(join(dir, "source.docx"), buffer);
+            await writeFile(join(dir, "figures.json"), JSON.stringify(parsed.figures || [], null, 2), "utf8");
+          }
+
+          if (body.noStore) {
+            value = {
+              ok: true,
+              title: name,
+              chars: text.length,
+              textPath,
+              images: parsed.images,
+              preview: text.slice(0, 240),
+              url: "",
+              nodeToken: "",
+              library: "未写入（受审文件仅本地解析）",
+              stored: false,
+              deduped: false,
+            };
+            break;
+          }
 
           const library = await ensureWikiChild(cfg, cfg.rootToken || "", "参考资料库");
           const tierNode = await ensureWikiChild(cfg, library, String(body.tier || "未分级"));
@@ -929,7 +955,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             cfg,
             `/wiki/v2/spaces/${space}/nodes?parent_node_token=${encodeURIComponent(boardNode)}&page_size=50`,
           );
-          const existing = (siblings.items ?? []).find((item) => item.title === name);
+          const existing = body.noStore ? void 0 : (siblings.items ?? []).find((item) => item.title === name);
           let deduped = false;
           let published = null;
           if (existing) {
@@ -948,7 +974,18 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
               }
             }
           }
-          if (!published) published = await uploadFileToWiki(cfg, tmp, boardNode, name);
+          const libraryLimitBytes = body.noStore ? 0 : 20 * 1024 * 1024;
+          let stored = false;
+          if (published) {
+            stored = true;
+          } else if (buffer.length <= libraryLimitBytes) {
+            try {
+              published = await uploadFileToWiki(cfg, tmp, boardNode, name);
+              stored = true;
+            } catch (error) {
+              published = null;
+            }
+          }
 
           value = {
             ok: true,
@@ -957,9 +994,10 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
             textPath,
             images: parsed.images,
             preview: text.slice(0, 240),
-            url: published.url,
-            nodeToken: published.wikiToken,
-            library: "参考资料库",
+            url: published ? published.url : "",
+            nodeToken: published ? published.wikiToken : "",
+            library: stored ? "参考资料库" : "未写入（超过 20 MB，仅本地解析）",
+            stored,
             deduped,
           };
         } finally {
@@ -1818,6 +1856,53 @@ function apply(ctx, config = {}) {
     }),
   );
 
+  ctx.tools.register(
+    defineTool({
+      name: "jswj_file_read",
+      description:
+        "读取知识库中「文件」节点（例如上传的 .docx 附件）的正文。jswj_doc_read 只读在线文档；本工具先下载附件再解析文本，不经过上传通道，因此不受 20 MB 上传限制，适合大体量的安全分析报告。",
+      parameters: {
+        target: { type: "string", description: "wiki 链接或节点 token（指向文件节点）" },
+      },
+      async execute(args) {
+        const token = pickToken(args.target);
+        if (!token) fail("没有从 target 中解析出 token。");
+        const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(token)}`);
+        const info = node && node.node;
+        if (!info) fail("未找到该节点。");
+        if (info.obj_type === "docx") fail("该节点是在线文档，请改用 jswj_doc_read。");
+
+        const buffer = await downloadDriveFile(cfg, info.obj_token);
+        const ext = (extname(info.title || "") || ".bin").toLowerCase();
+        const dir = join(homedir(), ".dsh", "jswj-sources", safeName(info.title || "file", "file"));
+        await mkdir(dir, { recursive: true });
+        const localFile = join(dir, `source${ext}`);
+        await writeFile(localFile, buffer);
+
+        const parsed = await extractSourceText(cfg, localFile, ext, "");
+        const textPath = join(dir, "text.txt");
+        await writeFile(textPath, parsed.text, "utf8");
+        return {
+          title: info.title || "",
+          bytes: buffer.length,
+          chars: parsed.text.length,
+          textPath,
+          preview: parsed.text.slice(0, 200),
+        };
+      },
+      output: {
+        schema: objectSchema({
+          title: str("节点标题", true),
+          bytes: { type: "number", description: "文件字节数" },
+          chars: { type: "number", description: "正文字数" },
+          textPath: str("解析出的文本文件路径", true),
+          preview: str("正文前 200 字", true),
+        }),
+        render: (_args, v) => text(`${v.title}：${v.chars} 字，已存到 ${v.textPath}`),
+      },
+    }),
+  );
+
   // ---------------------------------------------------------------- Word 出稿
 
   ctx.tools.register(
@@ -2154,6 +2239,165 @@ function apply(ctx, config = {}) {
   // ---------------------------------------------------------------- 页面数据通道
 
   const webServer = ctx.webServer ?? ctx.get("webServer");
+  if (webServer) {
+    ctx.effect(() =>
+      webServer.register({
+        kind: "prefix",
+        path: "/api/jswj-vendor",
+        handler: async (req, res) => {
+          try {
+            const name = basename(String(req.url || "").split("?")[0]);
+            if (!/^[A-Za-z0-9._-]+\.js$/.test(name)) {
+              res.statusCode = 400;
+              res.end("bad name");
+              return;
+            }
+            const data = await readFile(packageFile(`vendor/${name}`));
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/javascript; charset=utf-8");
+            res.setHeader("cache-control", "public, max-age=86400");
+            res.end(data);
+          } catch {
+            res.statusCode = 404;
+            res.end("not found");
+          }
+        },
+      }),
+    );
+  }
+
+  if (webServer) {
+    ctx.effect(() =>
+      webServer.register({
+        kind: "prefix",
+        path: "/api/jswj-file",
+        handler: async (req, res) => {
+          try {
+            const taskId = basename(decodeURIComponent(String(req.url || "").split("?")[0]));
+            if (!/^[A-Za-z0-9._-]+$/.test(taskId)) {
+              res.statusCode = 400;
+              res.end("bad task");
+              return;
+            }
+            const dir = join(homedir(), ".dsh", "jswj-sources", taskId);
+            const entries = await readdir(dir).catch(() => []);
+            const target =
+              entries.find((name) => /^source\.docx$/i.test(name)) ||
+              entries.find((name) => /\.docx$/i.test(name));
+            if (!target) {
+              res.statusCode = 404;
+              res.end("no docx");
+              return;
+            }
+            const data = await readFile(join(dir, target));
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            res.setHeader("cache-control", "no-store");
+            res.end(data);
+          } catch {
+            res.statusCode = 404;
+            res.end("not found");
+          }
+        },
+      }),
+    );
+  }
+
+  if (webServer) {
+    ctx.effect(() =>
+      webServer.register({
+        kind: "prefix",
+        path: "/api/jswj-image",
+        handler: async (req, res) => {
+          try {
+            // 前缀路由可能传入完整路径，也可能已去掉前缀，两种都兼容。
+            const pathname = String(req.url || "").split("?")[0];
+            const marker = "/api/jswj-image/";
+            const tail = pathname.includes(marker)
+              ? pathname.slice(pathname.indexOf(marker) + marker.length)
+              : pathname.replace(/^\/+/, "");
+            const parts = tail.split("/").filter(Boolean);
+            if (parts.length !== 2) {
+              res.statusCode = 400;
+              res.end("bad path");
+              return;
+            }
+            const taskId = decodeURIComponent(parts[0]);
+            const fileName = decodeURIComponent(parts[1]);
+            if (
+              !/^[A-Za-z0-9._-]+$/.test(taskId) ||
+              taskId === "." ||
+              taskId === ".." ||
+              !fileName ||
+              fileName !== basename(fileName) ||
+              /[\\/]/.test(fileName)
+            ) {
+              res.statusCode = 400;
+              res.end("bad name");
+              return;
+            }
+            const types = {
+              ".png": "image/png",
+              ".jpg": "image/jpeg",
+              ".jpeg": "image/jpeg",
+              ".gif": "image/gif",
+              ".bmp": "image/bmp",
+              ".webp": "image/webp",
+              ".tif": "image/tiff",
+              ".tiff": "image/tiff",
+            };
+            const type = types[extname(fileName).toLowerCase()];
+            if (!type) {
+              res.statusCode = 400;
+              res.end("not image");
+              return;
+            }
+            const data = await readFile(join(homedir(), ".dsh", "jswj-sources", taskId, "images", fileName));
+            res.statusCode = 200;
+            res.setHeader("content-type", type);
+            res.setHeader("cache-control", "private, max-age=3600");
+            res.end(data);
+          } catch {
+            res.statusCode = 404;
+            res.end("not found");
+          }
+        },
+      }),
+    );
+  }
+
+  if (webServer) {
+    ctx.effect(() =>
+      webServer.register({
+        kind: "prefix",
+        path: "/api/jswj-figures",
+        handler: async (req, res) => {
+          try {
+            const pathname = String(req.url || "").split("?")[0];
+            const marker = "/api/jswj-figures/";
+            const tail = pathname.includes(marker)
+              ? pathname.slice(pathname.indexOf(marker) + marker.length)
+              : pathname.replace(/^\/+/, "");
+            const taskId = decodeURIComponent(tail.replace(/\/+$/, ""));
+            if (!/^[A-Za-z0-9._-]+$/.test(taskId) || taskId === "." || taskId === "..") {
+              res.statusCode = 400;
+              res.end("bad task");
+              return;
+            }
+            const data = await readFile(join(homedir(), ".dsh", "jswj-sources", taskId, "figures.json"), "utf8");
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json; charset=utf-8");
+            res.setHeader("cache-control", "no-store");
+            res.end(data);
+          } catch {
+            res.statusCode = 404;
+            res.end("not found");
+          }
+        },
+      }),
+    );
+  }
+
   if (webServer) {
     ctx.effect(
       () =>
