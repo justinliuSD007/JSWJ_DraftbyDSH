@@ -345,13 +345,50 @@ namespace JswjSetup
             log("卸载完成。请重新打开 DSH。");
         }
 
+        /** DSH 是否正在运行。自动化测试可用 JSWJ_SKIP_PROCESS_CHECK=1 跳过。 */
+        public static bool IsDshRunning()
+        {
+            if (Environment.GetEnvironmentVariable("JSWJ_SKIP_PROCESS_CHECK") == "1") return false;
+            try
+            {
+                foreach (var p in Process.GetProcessesByName("DeepSeek Harness"))
+                {
+                    p.Dispose();
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         public void EnsureDshClosed()
         {
-            if (Environment.GetEnvironmentVariable("JSWJ_SKIP_PROCESS_CHECK") == "1") return;
-            foreach (var p in Process.GetProcessesByName("DeepSeek Harness"))
+            if (IsDshRunning()) throw new ApplicationException("DSH 正在运行，请完全退出后重试。");
+        }
+
+        /** 检查 .NET Framework 4.8 与 64 位 Windows；返回空字符串表示满足，否则给出缺项。 */
+        public static string CheckSystemEnvironment()
+        {
+            var missing = new List<string>();
+            if (!HasNetFramework48()) missing.Add(".NET Framework 4.8");
+            if (!Environment.Is64BitOperatingSystem) missing.Add("64 位 Windows");
+            return missing.Count == 0 ? "" : "缺少 " + string.Join("、", missing.ToArray());
+        }
+
+        private static bool HasNetFramework48()
+        {
+            try
             {
-                throw new ApplicationException("检测到 DSH 正在运行。请完全退出 DSH（不是最小化）后重新运行安装器。");
+                using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"))
+                {
+                    if (key == null) return false;
+                    object release = key.GetValue("Release");
+                    if (release == null) return false;
+                    return Convert.ToInt32(release) >= 528040; // 528040 = .NET Framework 4.8
+                }
             }
+            catch { return false; }
         }
 
         public void CopyPayload(Action<string> log)
@@ -706,6 +743,22 @@ namespace JswjSetup
         private readonly ToolTip _toolTip = new ToolTip();
         private readonly Installer _installer = new Installer();
 
+        /** 两屏共用 */
+        private const string SubtitleText = "适用于 DeepSeek Harness 桌面端 · v0.7.0-beta.8";
+
+        // 两屏：安装前确认页 + 安装页，同一窗口内切换。
+        private readonly Panel _installPage = new Panel();
+        private readonly Panel _precheckPage = new Panel();
+        private readonly Label[] _checkIcon = new Label[3];
+        private readonly Label[] _checkName = new Label[3];
+        private readonly Label[] _checkResult = new Label[3];
+        private readonly Label[] _checkHint = new Label[3];
+        private readonly bool[] _checkOk = new bool[3];
+        private readonly CheckBox _confirmBox = new CheckBox();
+        private readonly Button _recheck = new Button();
+        private readonly Button _next = new Button();
+        private readonly Button _preCancel = new Button();
+
         private volatile bool _cancelled;
         private volatile bool _closed;
         private bool _running;
@@ -724,6 +777,14 @@ namespace JswjSetup
             Font = new Font("Microsoft YaHei UI", 9f);
             FormClosing += OnFormClosing;
 
+            // 先搭安装页（尺寸按 620×640 定），再把确认页盖在上面，最后由 ShowInstallPage 切回来。
+            _installPage.SetBounds(0, 0, 620, 640);
+            _installPage.Visible = false;
+            Controls.Add(_installPage);
+
+            _precheckPage.SetBounds(0, 0, 620, 350);
+            Controls.Add(_precheckPage);
+
             int y = 16;
 
             var title = new Label();
@@ -731,46 +792,46 @@ namespace JswjSetup
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
             title.SetBounds(24, y, 572, 26);
             title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(title);
+            _installPage.Controls.Add(title);
             y += 28;
 
             var subtitle = new Label();
-            subtitle.Text = "适用于 DeepSeek Harness 桌面端 · v0.7.0-beta.7";
+            subtitle.Text = SubtitleText;
             subtitle.ForeColor = HintColor;
             subtitle.SetBounds(24, y, 572, 17);
             subtitle.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(subtitle);
+            _installPage.Controls.Add(subtitle);
             y += 20;
 
             var note = new Label();
 #if BUNDLED
             // 内置凭据版本：不显示输入框，安装即完成。
-            note.Text = "内置凭据已配置，直接点「开始安装」即可。安装前请完全退出 DSH。";
+            note.Text = "内置凭据已配置，直接点「开始安装」即可。";
 #else
-            note.Text = "安装前请完全退出 DSH。安装需要飞书应用的 appId 与 appSecret（仅保存在本机）。";
+            note.Text = "安装需要飞书应用的 appId 与 appSecret（仅保存在本机）。";
 #endif
             note.ForeColor = HintColor;
             note.SetBounds(24, y, 572, 30);
             note.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(note);
+            _installPage.Controls.Add(note);
             y += 32;
 
 #if !BUNDLED
             var appIdLabel = LabelAt("feishu appId");
             appIdLabel.SetBounds(24, y, 296, 17);
-            Controls.Add(appIdLabel);
+            _installPage.Controls.Add(appIdLabel);
 
             _appId.SetBounds(24, y + 18, 296, 24);
             _appId.Text = "cli_";
-            Controls.Add(_appId);
+            _installPage.Controls.Add(_appId);
 
             var secretLabel = LabelAt("appSecret");
             secretLabel.SetBounds(332, y, 264, 17);
-            Controls.Add(secretLabel);
+            _installPage.Controls.Add(secretLabel);
 
             _appSecret.SetBounds(332, y + 18, 264, 24);
             _appSecret.UseSystemPasswordChar = true;
-            Controls.Add(_appSecret);
+            _installPage.Controls.Add(_appSecret);
             y += 48;
 #endif
 
@@ -779,7 +840,7 @@ namespace JswjSetup
             compHeader.ForeColor = HintColor;
             compHeader.SetBounds(24, y, 572, 18);
             compHeader.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(compHeader);
+            _installPage.Controls.Add(compHeader);
             y += 18;
 
             _compPlugin.Text = "插件本体";
@@ -789,14 +850,14 @@ namespace JswjSetup
             _compPlugin.ForeColor = Color.FromArgb(120, 126, 135); // 灰字表示固定项
             _compPlugin.SetBounds(24, y, 300, 22);
             _toolTip.SetToolTip(_compPlugin, "固定包含，不可取消");
-            Controls.Add(_compPlugin);
+            _installPage.Controls.Add(_compPlugin);
             AddComponentMeta(y, "1 MB", "", "工具、技能、模板与页面渲染组件");
             y += 44;
 
             _compLibre.Text = "LibreOffice 文档转换组件";
             _compLibre.Checked = false; // 默认不勾选：体积大、要联网、需要管理员权限
             _compLibre.SetBounds(24, y, 300, 22);
-            Controls.Add(_compLibre);
+            _installPage.Controls.Add(_compLibre);
             AddComponentMeta(y, "约 400 MB", "· 可选", "把 Word 转成分页图片，供原文精确定位；需联网下载，约 3–5 分钟");
             y += 44;
 
@@ -810,7 +871,7 @@ namespace JswjSetup
             int prefixWidth = TextRenderer.MeasureText("安装到：", pathLabel.Font).Width;
             pathLabel.Text = "安装到：" + ElideMiddle(fullPath, pathLabel.Font, 572 - prefixWidth - 8);
             _toolTip.SetToolTip(pathLabel, fullPath);
-            Controls.Add(pathLabel);
+            _installPage.Controls.Add(pathLabel);
             y += 18;
 
             _install.Text = "开始安装";
@@ -819,12 +880,12 @@ namespace JswjSetup
             _install.ForeColor = Color.White;
             _install.FlatStyle = FlatStyle.Flat;
             _install.Click += OnInstall;
-            Controls.Add(_install);
+            _installPage.Controls.Add(_install);
 
             _cancel.Text = "取消";
             _cancel.SetBounds(186, y, 96, 34);
             _cancel.Click += OnCancel;
-            Controls.Add(_cancel);
+            _installPage.Controls.Add(_cancel);
 
             // 卸载是破坏性操作：右下角、次要样式，与主操作拉开距离。
             _uninstall.Text = "卸载";
@@ -836,7 +897,7 @@ namespace JswjSetup
             _uninstall.FlatAppearance.BorderColor = Color.FromArgb(200, 205, 213);
             _uninstall.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _uninstall.Click += OnUninstall;
-            Controls.Add(_uninstall);
+            _installPage.Controls.Add(_uninstall);
             y += 38;
 
             int stepTop = y + 6;
@@ -848,7 +909,7 @@ namespace JswjSetup
                 name.AutoEllipsis = true;
                 name.SetBounds(24, stepTop + i * 19, 400, 19);
                 name.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-                Controls.Add(name);
+                _installPage.Controls.Add(name);
                 _stepNames[i] = name;
 
                 var state = new Label();
@@ -858,7 +919,7 @@ namespace JswjSetup
                 state.AutoEllipsis = true;
                 state.SetBounds(444, stepTop + i * 19, 152, 19);
                 state.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                Controls.Add(state);
+                _installPage.Controls.Add(state);
                 _stepStatus[i] = state;
                 _stepState[i] = StatePending;
             }
@@ -868,13 +929,13 @@ namespace JswjSetup
             sep.BackColor = Color.FromArgb(214, 218, 224);
             sep.SetBounds(24, sepTop, 572, 1);
             sep.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(sep);
+            _installPage.Controls.Add(sep);
 
             _status.SetBounds(24, sepTop + 8, 572, 18);
             _status.ForeColor = HintColor;
             _status.AutoEllipsis = true;
             _status.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(_status);
+            _installPage.Controls.Add(_status);
 
             int logTop = sepTop + 8 + 18 + 6;
             int logHeight = Math.Max(40, ClientSize.Height - logTop - 16);
@@ -885,7 +946,7 @@ namespace JswjSetup
             _log.BackColor = Color.FromArgb(245, 246, 247);
             _log.BorderStyle = BorderStyle.FixedSingle;
             _log.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(_log);
+            _installPage.Controls.Add(_log);
 
             // 日志为空时显示占位说明，写入第一行后隐藏。
             _logHint.Text = "安装日志将显示在这里";
@@ -893,8 +954,189 @@ namespace JswjSetup
             _logHint.AutoSize = false;
             _logHint.SetBounds(_log.Left + 8, _log.Top + 6, 300, 18);
             _logHint.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-            Controls.Add(_logHint);
+            _installPage.Controls.Add(_logHint);
             _logHint.BringToFront();
+
+            BuildPrecheckPage();
+            Resize += OnPageResize;
+            _installPage.Visible = false;
+            _precheckPage.Visible = true;
+            MinimumSize = new Size(640, 390);
+            ClientSize = new Size(620, 350);
+            RefreshChecks();
+        }
+
+        /** 安装前确认页：三项检查 + 确认勾选 + 三个按钮。 */
+        private void BuildPrecheckPage()
+        {
+            int y = 16;
+
+            var title = new Label();
+            title.Text = "技术文件起草 · 安装程序";
+            title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
+            title.SetBounds(24, y, 572, 26);
+            _precheckPage.Controls.Add(title);
+            y += 28;
+
+            var subtitle = new Label();
+            subtitle.Text = SubtitleText;
+            subtitle.ForeColor = HintColor;
+            subtitle.SetBounds(24, y, 572, 17);
+            _precheckPage.Controls.Add(subtitle);
+            y += 26;
+
+            var intro = new Label();
+            intro.Text = "安装前请确认以下事项。全部满足后点「下一步」继续。";
+            intro.ForeColor = BodyColor;
+            intro.SetBounds(24, y, 572, 20);
+            _precheckPage.Controls.Add(intro);
+            y += 34;
+
+            string[] names = { "已安装 DSH 并至少启动过一次", "DSH 当前未运行", "系统环境" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                int rowTop = y + i * 46;
+
+                var icon = new Label();
+                icon.Text = "●";
+                icon.ForeColor = PendingColor;
+                icon.SetBounds(24, rowTop + 2, 18, 18);
+                _precheckPage.Controls.Add(icon);
+                _checkIcon[i] = icon;
+
+                var name = new Label();
+                name.Text = names[i];
+                name.ForeColor = BodyColor;
+                name.AutoEllipsis = true;
+                name.SetBounds(48, rowTop, 350, 20);
+                _precheckPage.Controls.Add(name);
+                _checkName[i] = name;
+
+                var result = new Label();
+                result.Text = "";
+                result.TextAlign = ContentAlignment.MiddleRight;
+                result.AutoEllipsis = true;
+                result.SetBounds(404, rowTop, 192, 20);
+                _precheckPage.Controls.Add(result);
+                _checkResult[i] = result;
+
+                var hint = new Label();
+                hint.Text = "";
+                hint.Font = new Font("Microsoft YaHei UI", 8.25f);
+                hint.ForeColor = DescColor;
+                hint.AutoEllipsis = true;
+                hint.SetBounds(48, rowTop + 21, 548, 16);
+                _precheckPage.Controls.Add(hint);
+                _checkHint[i] = hint;
+            }
+            y += names.Length * 46;
+
+            _confirmBox.Text = "我已确认以上事项，并已退出 DSH";
+            _confirmBox.SetBounds(24, y, 572, 24);
+            _confirmBox.CheckedChanged += delegate { UpdateNextEnabled(); };
+            _precheckPage.Controls.Add(_confirmBox);
+            y += 40;
+
+            _recheck.Text = "重新检测";
+            _recheck.SetBounds(24, y, 96, 32);
+            _recheck.BackColor = Color.White;
+            _recheck.ForeColor = Color.FromArgb(95, 100, 110);
+            _recheck.FlatStyle = FlatStyle.Flat;
+            _recheck.FlatAppearance.BorderSize = 1;
+            _recheck.FlatAppearance.BorderColor = Color.FromArgb(200, 205, 213);
+            _recheck.Click += OnRecheck;
+            _precheckPage.Controls.Add(_recheck);
+
+            _next.Text = "下一步";
+            _next.SetBounds(132, y, 150, 32);
+            _next.BackColor = RunningColor;
+            _next.ForeColor = Color.White;
+            _next.FlatStyle = FlatStyle.Flat;
+            _next.Click += OnNext;
+            _precheckPage.Controls.Add(_next);
+
+            _preCancel.Text = "取消";
+            _preCancel.SetBounds(294, y, 96, 32);
+            _preCancel.Click += delegate { Close(); };
+            _precheckPage.Controls.Add(_preCancel);
+        }
+
+        /** 窗口大小变化时，让当前可见的那一页跟着铺满。 */
+        private void OnPageResize(object sender, EventArgs e)
+        {
+            if (_installPage.Visible) _installPage.SetBounds(0, 0, ClientSize.Width, ClientSize.Height);
+            else if (_precheckPage.Visible) _precheckPage.SetBounds(0, 0, ClientSize.Width, ClientSize.Height);
+        }
+
+        /** 重新跑三项检查，刷新结论与「下一步」可用状态。 */
+        private void RefreshChecks()
+        {
+            bool profileOk = Directory.Exists(_installer.ProfileDir);
+            SetCheck(0, profileOk, "✓ 已就绪", "✗ 未找到配置目录",
+                profileOk ? "" : "请先启动一次 DSH，任意建一个会话，再退出重试");
+
+            bool dshClosed = !Installer.IsDshRunning();
+            SetCheck(1, dshClosed, "✓ 已退出", "✗ 正在运行",
+                dshClosed ? "" : "请从托盘完全退出 DSH");
+
+            bool envOk = Installer.CheckSystemEnvironment().Length == 0;
+            SetCheck(2, envOk, "✓ 满足要求", "✗ 不满足",
+                envOk ? "" : "需要 .NET Framework 4.8 与 64 位 Windows");
+
+            UpdateNextEnabled();
+        }
+
+        private void SetCheck(int index, bool ok, string passText, string failText, string hint)
+        {
+            _checkOk[index] = ok;
+            _checkIcon[index].ForeColor = ok ? DoneColor : FailedColor;
+            _checkResult[index].Text = ok ? passText : failText;
+            _checkResult[index].ForeColor = ok ? DoneColor : FailedColor;
+            _checkHint[index].Text = hint;
+        }
+
+        /** 前两项检查通过、且勾选确认后，才允许进入安装页。 */
+        private void UpdateNextEnabled()
+        {
+            bool ready = _checkOk[0] && _checkOk[1] && _confirmBox.Checked;
+            _next.Enabled = ready;
+            // FlatStyle.Flat 的自定义底色不会随禁用变灰，这里手动调浅并换灰字。
+            _next.BackColor = ready ? RunningColor : Color.FromArgb(226, 231, 240);
+            _next.ForeColor = ready ? Color.White : Color.FromArgb(126, 134, 148);
+        }
+
+        private void OnRecheck(object sender, EventArgs e)
+        {
+            RefreshChecks();
+        }
+
+        private void OnNext(object sender, EventArgs e)
+        {
+            // 再校验一遍，防止用户确认后又启动 DSH。
+            RefreshChecks();
+            if (!_checkOk[0] || !_checkOk[1])
+            {
+                MessageBox.Show(this, "仍有检查项未通过，请处理后点「重新检测」。", "无法继续",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (!_confirmBox.Checked)
+            {
+                MessageBox.Show(this, "请先勾选「我已确认以上事项，并已退出 DSH」。", "请确认",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            ShowInstallPage();
+        }
+
+        private void ShowInstallPage()
+        {
+            _precheckPage.Visible = false;
+            _installPage.SetBounds(0, 0, 620, 640);
+            _installPage.Visible = true;
+            MinimumSize = new Size(640, 560);
+            ClientSize = new Size(620, 640);
+            _install.Focus();
         }
 
         private static Label LabelAt(string text)
@@ -921,7 +1163,7 @@ namespace JswjSetup
                 optional.TextAlign = ContentAlignment.MiddleLeft;
                 optional.SetBounds(right - optionalWidth, y + 2, optionalWidth, 18);
                 optional.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                Controls.Add(optional);
+                _installPage.Controls.Add(optional);
             }
 
             int sizeWidth = TextRenderer.MeasureText(sizeText, font).Width;
@@ -932,7 +1174,7 @@ namespace JswjSetup
             size.TextAlign = ContentAlignment.MiddleRight;
             size.SetBounds(right - optionalWidth - sizeWidth, y + 2, sizeWidth, 18);
             size.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            Controls.Add(size);
+            _installPage.Controls.Add(size);
 
             var desc = new Label();
             desc.Text = descText;
@@ -941,7 +1183,7 @@ namespace JswjSetup
             desc.AutoEllipsis = true;
             desc.SetBounds(44, y + 24, 552, 17);
             desc.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(desc);
+            _installPage.Controls.Add(desc);
         }
 
         /** 路径过长时省略中间，保留开头与结尾。 */
@@ -1140,7 +1382,7 @@ namespace JswjSetup
                     {
                         _installer.ValidatePayload();
                         _installer.EnsureDshClosed();
-                        Append("安装包检查通过，DSH 已退出");
+                        Append("安装包检查通过，DSH 未在运行");
                     }, failed);
 
                     if (!payloadOk)

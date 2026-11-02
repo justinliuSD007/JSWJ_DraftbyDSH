@@ -548,37 +548,155 @@ window.__ModuleLoader__.load({
         zIndex: 0,
         isolation: "isolate",
       },
-      evidenceFigure: {
+      figureBlock: { flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 4 },
+      figureTitle: { fontSize: 12, fontWeight: 650, color: C.sub, letterSpacing: "0.02em" },
+      figureFrame: {
+        width: "100%",
+        maxHeight: "40vh",
+        overflow: "auto",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        background: C.layer1,
+        border: `1px solid ${BORDER_SOFT}`,
+        borderRadius: 8,
+        padding: 4,
+        boxSizing: "border-box",
+      },
+      figureWrap: {
+        position: "relative",
+        display: "inline-block",
+        lineHeight: 0,
+        cursor: "zoom-in",
+        maxWidth: "100%",
+      },
+      figureImg: { display: "block", maxWidth: "100%", maxHeight: "calc(40vh - 10px)", width: "auto", height: "auto", borderRadius: 4 },
+      figureCaption: { marginTop: 2, fontSize: 11, color: C.sub },
+      annotationLabel: {
+        position: "absolute",
+        transform: "translate(-50%, -50%)",
+        minWidth: 16,
+        height: 16,
+        padding: "0 3px",
+        borderRadius: 4,
+        background: C.err,
+        color: "#fff",
+        fontSize: 10,
+        fontWeight: 700,
+        lineHeight: "16px",
+        textAlign: "center",
+        pointerEvents: "none",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+        boxSizing: "border-box",
+        whiteSpace: "nowrap",
+      },
+      lightboxOverlay: {
+        position: "fixed",
+        inset: 0,
+        zIndex: 10001,
+        background: "rgba(0,0,0,0.78)",
+        color: "#fff",
+        fontFamily: FONT,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      },
+      lightboxTop: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 3,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 14px",
+        background: "linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0))",
+      },
+      lightboxTitle: {
+        flex: "1 1 auto",
+        minWidth: 0,
+        fontSize: 13,
+        color: "#fff",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      },
+      lightboxClose: {
+        height: 32,
+        minWidth: 64,
+        minHeight: 32,
+        padding: "0 12px",
+        borderRadius: 7,
+        border: "1px solid rgba(255,255,255,0.45)",
+        background: "rgba(0,0,0,0.45)",
+        color: "#fff",
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: "inherit",
+        cursor: "pointer",
+        flex: "0 0 auto",
+        whiteSpace: "nowrap",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxSizing: "border-box",
+      },
+      lightboxStage: {
         position: "relative",
         flex: "1 1 auto",
         minHeight: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "auto",
-        padding: 8,
+        overflow: "hidden",
+        touchAction: "none",
+        userSelect: "none",
       },
-      evidenceShot: {
-        position: "relative",
-        width: "100%",
-        height: "100%",
-        minHeight: 240,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      evidenceImg: { width: "100%", height: "100%", objectFit: "contain", display: "block" },
-      evidenceRing: {
+      lightboxWrap: {
         position: "absolute",
         left: "50%",
         top: "50%",
-        width: "60%",
-        aspectRatio: "1 / 1",
+        transformOrigin: "center center",
+        outline: "1px solid rgba(255,255,255,0.25)",
+        boxShadow: "0 12px 48px rgba(0,0,0,0.5)",
+        willChange: "transform",
+      },
+      lightboxImg: { display: "block", width: "100%", height: "100%" },
+      lightboxTools: {
+        position: "absolute",
+        bottom: 16,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 3,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: 6,
+        borderRadius: 10,
+        background: "rgba(0,0,0,0.55)",
+        border: "1px solid rgba(255,255,255,0.25)",
+      },
+      lightboxTool: {
+        height: 28,
+        padding: "0 10px",
+        borderRadius: 6,
+        border: "1px solid rgba(255,255,255,0.25)",
+        background: "transparent",
+        color: "#fff",
+        fontSize: 12,
+        fontFamily: "inherit",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      },
+      lightboxHint: {
+        position: "absolute",
+        left: "50%",
+        top: "50%",
         transform: "translate(-50%, -50%)",
-        border: "3px solid red",
-        borderRadius: "50%",
-        boxSizing: "border-box",
-        pointerEvents: "none",
+        zIndex: 2,
+        fontSize: 13,
+        color: "#fff",
+        background: "rgba(0,0,0,0.45)",
+        padding: "8px 12px",
+        borderRadius: 8,
       },
       issueList: { display: "flex", flexDirection: "column", gap: 10 },
       issueCard: {
@@ -1477,11 +1595,178 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function clamp01(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return 0;
+      return Math.max(0, Math.min(1, number));
+    }
+
+    function normalizeAnnotations(value) {
+      if (!Array.isArray(value)) return [];
+      const shapes = new Set(["rect", "ellipse", "arrow", "spotlight"]);
+      const out = [];
+      for (const item of value) {
+        if (!item || !shapes.has(item.shape)) continue;
+        const x = clamp01(item.x);
+        const y = clamp01(item.y);
+        const w = Math.min(clamp01(item.w), 1 - x);
+        const h = Math.min(clamp01(item.h), 1 - y);
+        if (w <= 0.001 || h <= 0.001) continue;
+        out.push({
+          shape: item.shape,
+          x,
+          y,
+          w,
+          h,
+          label: Array.from(String(item.label || "")).slice(0, 2).join(""),
+        });
+      }
+      return out;
+    }
+
+    function AnnotationOverlay(props) {
+      const items = props.annotations || [];
+      if (!items.length) {
+        return h(
+          "svg",
+          {
+            viewBox: "0 0 1 1",
+            preserveAspectRatio: "none",
+            style: { position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" },
+          },
+          h("rect", {
+            x: 0.002,
+            y: 0.002,
+            width: 0.996,
+            height: 0.996,
+            fill: "none",
+            stroke: "red",
+            strokeWidth: 1,
+            strokeDasharray: "4 3",
+            vectorEffect: "non-scaling-stroke",
+          }),
+        );
+      }
+      const defs = [];
+      const nodes = [];
+      const spotlights = items.filter((item) => item.shape === "spotlight");
+      if (spotlights.length) {
+        const maskId = "jswj-spotlight-mask";
+        defs.push(
+          h(
+            "mask",
+            { key: "spot-mask", id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: 1, height: 1 },
+            h("rect", { x: 0, y: 0, width: 1, height: 1, fill: "white" }),
+            spotlights.map((item, index) =>
+              h("ellipse", {
+                key: `hole-${index}`,
+                cx: item.x + item.w / 2,
+                cy: item.y + item.h / 2,
+                rx: item.w / 2,
+                ry: item.h / 2,
+                fill: "black",
+              }),
+            ),
+          ),
+        );
+        nodes.push(
+          h("rect", {
+            key: "spotlight",
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            fill: "rgba(0,0,0,0.45)",
+            mask: `url(#${maskId})`,
+          }),
+        );
+      }
+      items.forEach((item, index) => {
+        if (item.shape === "spotlight") return;
+        if (item.shape === "rect") {
+          nodes.push(
+            h("rect", {
+              key: `shape-${index}`,
+              x: item.x,
+              y: item.y,
+              width: item.w,
+              height: item.h,
+              fill: "none",
+              stroke: "red",
+              strokeWidth: 2,
+              vectorEffect: "non-scaling-stroke",
+            }),
+          );
+          return;
+        }
+        if (item.shape === "ellipse") {
+          nodes.push(
+            h("ellipse", {
+              key: `shape-${index}`,
+              cx: item.x + item.w / 2,
+              cy: item.y + item.h / 2,
+              rx: item.w / 2,
+              ry: item.h / 2,
+              fill: "none",
+              stroke: "red",
+              strokeWidth: 2,
+              vectorEffect: "non-scaling-stroke",
+            }),
+          );
+          return;
+        }
+        if (item.shape === "arrow") {
+          const markerId = `jswj-arrow-${index}`;
+          defs.push(
+            h(
+              "marker",
+              {
+                key: `marker-${index}`,
+                id: markerId,
+                viewBox: "0 0 10 10",
+                refX: 9,
+                refY: 5,
+                markerWidth: 6,
+                markerHeight: 6,
+                orient: "auto",
+                markerUnits: "strokeWidth",
+              },
+              h("path", { d: "M0,0 L10,5 L0,10 z", fill: "red" }),
+            ),
+          );
+          nodes.push(
+            h("line", {
+              key: `shape-${index}`,
+              x1: item.x,
+              y1: item.y,
+              x2: item.x + item.w,
+              y2: item.y + item.h,
+              stroke: "red",
+              strokeWidth: 2,
+              vectorEffect: "non-scaling-stroke",
+              markerEnd: `url(#${markerId})`,
+            }),
+          );
+        }
+      });
+      return h(
+        "svg",
+        {
+          viewBox: "0 0 1 1",
+          preserveAspectRatio: "none",
+          style: { position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" },
+        },
+        h("defs", null, defs),
+        nodes,
+      );
+    }
+
     function EvidenceFigure(props) {
       const [broken, setBroken] = React.useState(false);
       const [file, setFile] = React.useState("");
       const [loading, setLoading] = React.useState(true);
       const raw = String(props.figure || "").trim();
+      const annotations = normalizeAnnotations(props.annotations);
 
       React.useEffect(() => {
         let alive = true;
@@ -1507,19 +1792,324 @@ window.__ModuleLoader__.load({
       if (!raw) return h("div", { style: s.note }, "该意见未记录证据图片。");
       if (loading) return h("div", { style: s.note }, "正在查找证据图片…");
       if (broken) return h("div", { style: s.note }, `未找到与「${raw}」对应的证据图片。`);
+
+      const name = file || raw;
+      const openLightbox = (event) => {
+        if (!props.onOpenLightbox) return;
+        props.onOpenLightbox({
+          src: `/api/jswj-image/${encodeURIComponent(props.taskId)}/${encodeURIComponent(name)}`,
+          alt: raw,
+          label: name,
+          annotations,
+          trigger: event.currentTarget,
+        });
+      };
       return h(
         "div",
-        { style: s.evidenceFigure },
+        { style: s.figureBlock },
+        h("div", { style: s.figureTitle }, "修订标注"),
         h(
           "div",
-          { style: s.evidenceShot },
-          h("img", {
-            src: `/api/jswj-image/${encodeURIComponent(props.taskId)}/${encodeURIComponent(file || raw)}`,
-            alt: raw,
-            style: s.evidenceImg,
-            onError: () => setBroken(true),
-          }),
-          h("div", { style: s.evidenceRing }),
+          { style: s.figureFrame },
+          h(
+            "div",
+            {
+              style: s.figureWrap,
+              onClick: openLightbox,
+              onKeyDown: (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openLightbox(event);
+                }
+              },
+              role: "button",
+              tabIndex: 0,
+              title: "点击查看大图",
+              "aria-label": "查看大图",
+            },
+            h("img", {
+              src: `/api/jswj-image/${encodeURIComponent(props.taskId)}/${encodeURIComponent(name)}`,
+              alt: raw,
+              style: s.figureImg,
+              onError: () => setBroken(true),
+            }),
+            h(AnnotationOverlay, { annotations }),
+            annotations.map((item, index) =>
+              item.label
+                ? h(
+                    "span",
+                    {
+                      key: `label-${index}`,
+                      style: { ...s.annotationLabel, left: `${item.x * 100}%`, top: `${item.y * 100}%` },
+                    },
+                    item.label,
+                  )
+                : null,
+            ),
+          ),
+        ),
+        h("div", { style: s.figureCaption }, "点击图片可放大查看"),
+      );
+    }
+
+    function Lightbox(props) {
+      const reduce = Boolean(props.reduceMotion);
+      const annotations = normalizeAnnotations(props.annotations);
+      const [entered, setEntered] = React.useState(reduce);
+      const [status, setStatus] = React.useState("loading");
+      const [natural, setNatural] = React.useState(null);
+      const [fit, setFit] = React.useState(1);
+      const [scale, setScale] = React.useState(1);
+      const [pan, setPan] = React.useState({ x: 0, y: 0 });
+      const [dragging, setDragging] = React.useState(false);
+      const stageRef = React.useRef(null);
+      const dragRef = React.useRef(null);
+      const suppressClickRef = React.useRef(false);
+
+      const stageSize = () => {
+        const element = stageRef.current;
+        return element ? { w: element.clientWidth, h: element.clientHeight } : { w: window.innerWidth, h: window.innerHeight };
+      };
+
+      const clampPan = (x, y, size) => {
+        const box = size || stageSize();
+        return {
+          x: Math.max(-box.w / 2, Math.min(box.w / 2, x)),
+          y: Math.max(-box.h / 2, Math.min(box.h / 2, y)),
+        };
+      };
+
+      const fitFor = (width, height) => {
+        const box = stageSize();
+        const stageWidth = box.w > 0 ? box.w : window.innerWidth;
+        const stageHeight = box.h > 0 ? box.h : window.innerHeight;
+        return Math.max(0.02, Math.min(1, (stageWidth - 48) / width, (stageHeight - 48) / height));
+      };
+
+      const fitView = () => {
+        if (!natural) return;
+        setScale(fit);
+        setPan({ x: 0, y: 0 });
+      };
+
+      const oneToOne = () => {
+        setScale(1);
+        setPan({ x: 0, y: 0 });
+      };
+
+      const zoomAt = (factor, clientX, clientY) => {
+        if (!natural || !stageRef.current) return;
+        const minScale = Math.min(0.5, fit || 0.5);
+        const next = Math.max(minScale, Math.min(8, scale * factor));
+        if (Math.abs(next - scale) < 0.0001) return;
+        const rect = stageRef.current.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const anchorX = Number.isFinite(clientX) ? clientX : centerX;
+        const anchorY = Number.isFinite(clientY) ? clientY : centerY;
+        if (next <= fit) {
+          setScale(next);
+          setPan({ x: 0, y: 0 });
+          return;
+        }
+        const imageX = (anchorX - centerX - pan.x) / scale;
+        const imageY = (anchorY - centerY - pan.y) / scale;
+        const nextPan = clampPan(anchorX - centerX - imageX * next, anchorY - centerY - imageY * next, {
+          w: rect.width,
+          h: rect.height,
+        });
+        setScale(next);
+        setPan(nextPan);
+      };
+
+      const zoomCenter = (factor) => {
+        const rect = stageRef.current && stageRef.current.getBoundingClientRect();
+        zoomAt(factor, rect ? rect.left + rect.width / 2 : undefined, rect ? rect.top + rect.height / 2 : undefined);
+      };
+
+      const toggleZoom = () => {
+        if (!natural) return;
+        if (Math.abs(scale - 1) < 0.01) fitView();
+        else oneToOne();
+      };
+
+      const handleLoad = (event) => {
+        const width = event.currentTarget.naturalWidth || 1;
+        const height = event.currentTarget.naturalHeight || 1;
+        setNatural({ w: width, h: height });
+        setStatus("ready");
+        const nextFit = fitFor(width, height);
+        setFit(nextFit);
+        setScale(nextFit);
+        setPan({ x: 0, y: 0 });
+      };
+
+      React.useEffect(() => {
+        if (reduce) {
+          setEntered(true);
+          return undefined;
+        }
+        const id = window.requestAnimationFrame(() => setEntered(true));
+        return () => window.cancelAnimationFrame(id);
+      }, [reduce]);
+
+      React.useEffect(() => {
+        const onKeyDown = (event) => {
+          if (event.key === "+" || event.key === "=") {
+            event.preventDefault();
+            zoomCenter(1.25);
+          } else if (event.key === "-" || event.key === "_") {
+            event.preventDefault();
+            zoomCenter(0.8);
+          } else if (event.key === "0") {
+            event.preventDefault();
+            fitView();
+          }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+      }, [natural, scale, pan, fit]);
+
+      React.useEffect(() => {
+        const stage = stageRef.current;
+        if (!stage) return undefined;
+        const onWheel = (event) => {
+          event.preventDefault();
+          zoomAt(Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);
+        };
+        stage.addEventListener("wheel", onWheel, { passive: false });
+        return () => stage.removeEventListener("wheel", onWheel);
+      }, [natural, scale, pan, fit]);
+
+      const canDrag = Boolean(natural) && scale > fit + 0.001;
+      const onPointerDown = (event) => {
+        if (!canDrag) return;
+        dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
+        if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
+        setDragging(true);
+      };
+      const onPointerMove = (event) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        const dx = event.clientX - drag.x;
+        const dy = event.clientY - drag.y;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag.moved = true;
+        setPan(clampPan(drag.panX + dx, drag.panY + dy));
+      };
+      const onPointerUp = (event) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        if (drag.moved) {
+          suppressClickRef.current = true;
+          window.setTimeout(() => {
+            suppressClickRef.current = false;
+          }, 250);
+        }
+        dragRef.current = null;
+        setDragging(false);
+        if (event.currentTarget.releasePointerCapture) {
+          try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          } catch {
+            // 指针已释放时忽略。
+          }
+        }
+      };
+
+      const closeFromBackground = (event) => {
+        if (suppressClickRef.current) return;
+        if (event.target === event.currentTarget) props.onClose();
+      };
+
+      const percent = Math.round(scale * 100);
+      const overlayStyle = {
+        ...s.lightboxOverlay,
+        opacity: entered ? 1 : 0,
+        transition: reduce ? "none" : "opacity 160ms ease",
+      };
+      const wrapperStyle = natural
+        ? {
+            ...s.lightboxWrap,
+            width: natural.w,
+            height: natural.h,
+            marginLeft: -natural.w / 2,
+            marginTop: -natural.h / 2,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+            transition: reduce || dragging ? "none" : "transform 120ms ease",
+            cursor: canDrag ? (dragging ? "grabbing" : "grab") : "default",
+          }
+        : { ...s.lightboxWrap, width: 1, height: 1, marginLeft: -0.5, marginTop: -0.5, opacity: 0 };
+
+      return h(
+        "div",
+        { style: overlayStyle, onClick: closeFromBackground },
+        h(
+          "div",
+          { style: s.lightboxTop, onClick: (event) => event.stopPropagation() },
+          h("div", { style: s.lightboxTitle }, `${props.label || props.alt || "图片"} · ${percent}%`),
+          h(
+            "button",
+            { type: "button", style: s.lightboxClose, onClick: props.onClose },
+            "关闭",
+          ),
+        ),
+        h(
+          "div",
+          {
+            ref: stageRef,
+            style: { ...s.lightboxStage, cursor: "default" },
+            onClick: closeFromBackground,
+          },
+          status === "loading" ? h("div", { style: s.lightboxHint }, "加载图片…") : null,
+          status === "error" ? h("div", { style: s.lightboxHint }, "图片加载失败") : null,
+          h(
+            "div",
+            {
+              style: wrapperStyle,
+              onDoubleClick: toggleZoom,
+              onPointerDown,
+              onPointerMove,
+              onPointerUp,
+              onPointerCancel: onPointerUp,
+            },
+            h("img", {
+              src: props.src,
+              alt: props.alt || "",
+              draggable: false,
+              style: { ...s.lightboxImg, opacity: natural ? 1 : 0 },
+              onLoad: handleLoad,
+              onError: () => setStatus("error"),
+            }),
+            natural ? h(AnnotationOverlay, { annotations }) : null,
+            natural
+              ? annotations.map((item, index) =>
+                  item.label
+                    ? h(
+                        "span",
+                        {
+                          key: `lightbox-label-${index}`,
+                          style: {
+                            ...s.annotationLabel,
+                            left: `${item.x * 100}%`,
+                            top: `${item.y * 100}%`,
+                            transform: `translate(-50%, -50%) scale(${1 / scale})`,
+                            transformOrigin: "center center",
+                          },
+                        },
+                        item.label,
+                      )
+                    : null,
+                )
+              : null,
+          ),
+        ),
+        h(
+          "div",
+          { style: s.lightboxTools, onClick: (event) => event.stopPropagation() },
+          h("button", { type: "button", style: s.lightboxTool, onClick: () => zoomCenter(0.8) }, "缩小"),
+          h("button", { type: "button", style: s.lightboxTool, onClick: () => zoomCenter(1.25) }, "放大"),
+          h("button", { type: "button", style: s.lightboxTool, onClick: fitView }, "适应窗口"),
+          h("button", { type: "button", style: s.lightboxTool, onClick: oneToOne }, "1:1"),
         ),
       );
     }
@@ -1597,11 +2187,25 @@ window.__ModuleLoader__.load({
         if (!evidence) {
           body = h("div", { style: s.note }, "该意见未记录证据位置");
         } else if (evidence.figure) {
-          body = h(EvidenceFigure, {
-            key: `${props.taskId}:${evidence.figure}`,
-            taskId: props.taskId,
-            figure: evidence.figure,
-          });
+          body = h(
+            React.Fragment,
+            null,
+            h(EvidenceFigure, {
+              key: `${props.taskId}:${evidence.figure}`,
+              taskId: props.taskId,
+              figure: evidence.figure,
+              annotations: evidence.annotations,
+              onOpenLightbox: props.onOpenLightbox,
+            }),
+            hasText
+              ? h(DocxViewer, {
+                  taskId: props.taskId,
+                  quote: evidence.quote || "",
+                  section: evidence.section || "",
+                  reduceMotion: props.reduceMotion,
+                })
+              : h("div", { style: s.note }, "该意见未记录原文位置"),
+          );
         } else if (hasText) {
           body = h(DocxViewer, {
             taskId: props.taskId,
@@ -1771,6 +2375,7 @@ window.__ModuleLoader__.load({
       const [evidence, setEvidence] = React.useState(null);
       const [drawerBox, setDrawerBox] = React.useState(null);
       const [drawerOpen, setDrawerOpen] = React.useState(false);
+      const [lightbox, setLightbox] = React.useState(null);
       const pageRef = React.useRef(null);
       const autoPreviewRef = React.useRef("");
       const closeTimerRef = React.useRef(0);
@@ -1790,6 +2395,7 @@ window.__ModuleLoader__.load({
           window.cancelAnimationFrame(openFrameRef.current);
           openFrameRef.current = 0;
         }
+        setLightbox(null);
         setEvidence({ index });
       };
 
@@ -1800,6 +2406,7 @@ window.__ModuleLoader__.load({
           openFrameRef.current = 0;
         }
         clearCloseTimer();
+        setLightbox(null);
         setDrawerOpen(false);
         closeTimerRef.current = window.setTimeout(
           () => {
@@ -1808,6 +2415,16 @@ window.__ModuleLoader__.load({
           },
           reduceMotion ? 0 : PANEL_MS,
         );
+      };
+
+      const closeLightbox = () => {
+        const trigger = lightbox && lightbox.trigger;
+        setLightbox(null);
+        if (trigger) {
+          window.requestAnimationFrame(() => {
+            if (trigger.isConnected) trigger.focus();
+          });
+        }
       };
 
       const loadTasks = async () => {
@@ -1837,18 +2454,19 @@ window.__ModuleLoader__.load({
         closeDrawer();
       }, [task && task.id, task && task.step]);
 
-      // Esc 关闭证据抽屉；捕获阶段处理，避免被宿主快捷键先吃掉。
+      // Esc 关闭证据抽屉或图片弹层；捕获阶段处理，避免被宿主快捷键先吃掉。
       React.useEffect(() => {
-        if (!evidence) return undefined;
+        if (!lightbox && !evidence) return undefined;
         const onKeyDown = (event) => {
           if (event.key === "Escape") {
             event.stopPropagation();
-            closeDrawer();
+            if (lightbox) closeLightbox();
+            else closeDrawer();
           }
         };
         window.addEventListener("keydown", onKeyDown, true);
         return () => window.removeEventListener("keydown", onKeyDown, true);
-      }, [evidence, drawerOpen]);
+      }, [evidence, drawerOpen, lightbox]);
 
       // 抽屉用插件页面根节点的坐标定位，避免顶到宿主标题栏、侧栏、状态栏。
       React.useLayoutEffect(() => {
@@ -3966,8 +4584,19 @@ window.__ModuleLoader__.load({
           headerRightPad: drawerHeaderPad,
           open: drawerOpen,
           reduceMotion,
+          onOpenLightbox: (payload) => setLightbox(payload),
           onClose: closeDrawer,
         }),
+        lightbox
+          ? h(Lightbox, {
+              src: lightbox.src,
+              alt: lightbox.alt,
+              label: lightbox.label,
+              annotations: lightbox.annotations,
+              reduceMotion,
+              onClose: closeLightbox,
+            })
+          : null,
       );
     }
 
