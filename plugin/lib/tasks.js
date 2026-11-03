@@ -291,7 +291,8 @@ export function evaluateGate(flow, step, task) {
   if (step === 4) need((d.review?.issues ?? []).length > 0, "Q4：预审尚未产出意见");
   if (step === 5) {
     const undecided = (d.review?.issues ?? []).filter((item) => !item.decision);
-    need(undecided.length === 0, `Q5：还有 ${undecided.length} 条意见未处置（采纳 / 驳回 / 改写）`);
+    const skipped = d.review?.skipped === true;
+    need(skipped || undecided.length === 0, `Q5：还有 ${undecided.length} 条意见未处置（采纳 / 驳回 / 改写）`);
     need(d.review?.archived === true, "Q5：意见书尚未存档");
   }
 }

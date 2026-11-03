@@ -52,6 +52,89 @@ window.__ModuleLoader__.load({
     const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "成稿确认", "出稿"];
     const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
 
+    const REVIEW_CATEGORY_ORDER = [
+      "内容完整性",
+      "定量与数据",
+      "插图与标注",
+      "编号与引用",
+      "一致性与追踪",
+      "格式与规范",
+      "附录与附件",
+    ];
+    const REVIEW_CATEGORY_OTHER = "其他";
+
+    function reviewSectionParts(issue) {
+      const candidates = [issue && issue.evidence && issue.evidence.section, issue && issue.section, issue && issue.location];
+      for (const candidate of candidates) {
+        const match = String(candidate || "").match(/\d+(?:\.\d+)*/);
+        if (match) return match[0].split(".").map((part) => Number(part));
+      }
+      return [Number.MAX_SAFE_INTEGER];
+    }
+
+    function compareReviewEntries(a, b) {
+      const severityA = a.item.severity === "严重" ? 0 : 1;
+      const severityB = b.item.severity === "严重" ? 0 : 1;
+      if (severityA !== severityB) return severityA - severityB;
+      const sectionA = reviewSectionParts(a.item);
+      const sectionB = reviewSectionParts(b.item);
+      const length = Math.max(sectionA.length, sectionB.length);
+      for (let i = 0; i < length; i += 1) {
+        const left = sectionA[i] ?? -1;
+        const right = sectionB[i] ?? -1;
+        if (left !== right) return left - right;
+      }
+      return 0;
+    }
+
+    function reviewCategoryOf(issue) {
+      const value = String((issue && issue.category) || "").trim();
+      if (REVIEW_CATEGORY_ORDER.includes(value)) return value;
+      const dimension = String((issue && issue.dimension) || "").trim();
+      const rules = [
+        ["内容", "内容完整性"],
+        ["定量", "定量与数据"],
+        ["数据", "定量与数据"],
+        ["表格", "定量与数据"],
+        ["图", "插图与标注"],
+        ["编号", "编号与引用"],
+        ["引用", "编号与引用"],
+        ["一致性", "一致性与追踪"],
+        ["追踪", "一致性与追踪"],
+        ["格式", "格式与规范"],
+        ["规范", "格式与规范"],
+        ["附录", "附录与附件"],
+        ["附件", "附录与附件"],
+      ];
+      for (const [keyword, category] of rules) {
+        if (dimension.includes(keyword)) return category;
+      }
+      return REVIEW_CATEGORY_OTHER;
+    }
+
+    function buildReviewGroups(issues) {
+      const buckets = new Map();
+      issues.forEach((item, index) => {
+        const category = reviewCategoryOf(item);
+        if (!buckets.has(category)) buckets.set(category, []);
+        buckets.get(category).push({ item, index });
+      });
+      const order = [...REVIEW_CATEGORY_ORDER, REVIEW_CATEGORY_OTHER];
+      const groups = [];
+      for (const category of order) {
+        const entries = buckets.get(category);
+        if (!entries || entries.length === 0) continue;
+        entries.sort(compareReviewEntries);
+        groups.push({
+          category,
+          entries,
+          severe: entries.filter((entry) => entry.item.severity === "严重").length,
+          suggestion: entries.filter((entry) => entry.item.severity !== "严重").length,
+        });
+      }
+      return groups;
+    }
+
     const STEP_DESC = {
       draft: [
         "填文件名称、选类型与密级；名称做重名检测，编号可空。",
@@ -156,7 +239,7 @@ window.__ModuleLoader__.load({
         boxShadow: "0 2px 8px rgba(15,18,35,0.06)",
         background: "linear-gradient(135deg, rgba(59,63,182,0.12) 0%, rgba(166,74,151,0.10) 100%)",
       },
-      inner: { maxWidth: 1080, width: "100%", height: "100%", minHeight: 0, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14, boxSizing: "border-box" },
+      inner: { maxWidth: 1080, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 14, boxSizing: "border-box" },
       head: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 },
       eyebrow: { fontSize: 12, color: C.sub, letterSpacing: "0.04em", marginBottom: 6 },
       crumb: { fontSize: 12, color: C.sub, marginBottom: 10 },
@@ -346,10 +429,28 @@ window.__ModuleLoader__.load({
         margin: "22px 0 10px",
       },
       groupCount: { fontSize: 12, fontWeight: 400, color: C.sub },
+      groupHeader: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        width: "100%",
+        border: `1px solid ${BORDER_SOFT}`,
+        borderRadius: 10,
+        background: C.layer2,
+        color: C.text,
+        padding: "10px 12px",
+        marginTop: 10,
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: "inherit",
+        cursor: "pointer",
+        textAlign: "left",
+      },
+      groupChevron: { width: 14, color: C.sub },
       pendingDot: { width: 6, height: 6, borderRadius: 3, background: C.warn, display: "inline-block", marginRight: 6 },
       taskScroll: {
-        flex: "1 1 auto",
-        minHeight: 0,
+        maxHeight: "58vh",
+        minHeight: 220,
         overflowY: "auto",
         overflowX: "hidden",
         paddingRight: 6,
@@ -443,9 +544,13 @@ window.__ModuleLoader__.load({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        marginTop: 18,
-        paddingTop: 14,
-        borderTop: `1px solid ${BORDER_SOFT}`,
+        order: -1,
+        marginTop: 0,
+        marginBottom: 0,
+        padding: "12px 14px",
+        border: `1px solid ${BORDER_SOFT}`,
+        borderRadius: 12,
+        background: C.layer2,
         flexWrap: "wrap",
       },
       status: { fontSize: 12.5, color: C.sub, marginLeft: "auto", maxWidth: 460, lineHeight: 1.6 },
@@ -539,7 +644,8 @@ window.__ModuleLoader__.load({
       evidenceDoc: {
         flex: "1 1 auto",
         minHeight: 0,
-        overflow: "auto",
+        overflowY: "auto",
+        overflowX: "hidden",
         border: `1px solid ${BORDER}`,
         borderRadius: 10,
         background: "#fff",
@@ -914,6 +1020,7 @@ window.__ModuleLoader__.load({
           file: d.review?.file || {},
           issues: Array.isArray(d.review?.issues) ? d.review.issues : [],
           archived: Boolean(d.review?.archived),
+          skipped: Boolean(d.review?.skipped),
         },
         publishMarkdown: d.publish?.markdown || d.generation?.markdown || "",
         publish: { ...(d.publish || {}) },
@@ -1271,8 +1378,8 @@ window.__ModuleLoader__.load({
 
     function wrapRange(range, reduceMotion) {
       try {
-        const background = "rgba(59,63,182,0.20)";
-        const shadow = "0 0 0 2px rgba(59,63,182,0.25)";
+        const background = "rgba(213,73,65,0.18)";
+        const shadow = "0 0 0 2px rgba(213,73,65,0.20)";
         const span = document.createElement("span");
         span.setAttribute("data-jswj-hit", "1");
         span.style.cssText = reduceMotion
@@ -1329,8 +1436,8 @@ window.__ModuleLoader__.load({
         block.dataset.jswjSectionShadow = block.style.boxShadow || "";
         block.dataset.jswjSectionRadius = block.style.borderRadius || "";
       }
-      block.style.background = "rgba(59,63,182,0.16)";
-      block.style.boxShadow = "0 0 0 2px rgba(59,63,182,0.22)";
+      block.style.background = "rgba(213,73,65,0.16)";
+      block.style.boxShadow = "0 0 0 2px rgba(213,73,65,0.18)";
       block.style.borderRadius = "3px";
     }
 
@@ -1489,6 +1596,31 @@ window.__ModuleLoader__.load({
           alive = false;
         };
       }, [props.taskId]);
+
+      // 按回显面板宽度等比缩放 docx 页面，避免 A4 页边被横向裁掉。
+      React.useEffect(() => {
+        if (!ready) return undefined;
+        const box = boxRef.current;
+        if (!box) return undefined;
+        const fit = () => {
+          const page = box.querySelector(".docx");
+          if (!page) return;
+          const width = page.scrollWidth || 794;
+          const available = Math.max(320, box.clientWidth - 20);
+          const scale = Math.min(1, available / width);
+          page.style.zoom = String(scale);
+          page.style.margin = "0 auto";
+          const wrapper = box.querySelector(".docx-wrapper");
+          if (wrapper) {
+            wrapper.style.width = "100%";
+            wrapper.style.padding = "8px";
+          }
+        };
+        fit();
+        const observer = new ResizeObserver(fit);
+        observer.observe(box);
+        return () => observer.disconnect();
+      }, [ready]);
 
       // 每次切换意见：复用已缓存的命中区间，只做清高亮 + 重包 + 滚动。
       React.useEffect(() => {
@@ -2376,6 +2508,7 @@ window.__ModuleLoader__.load({
       const [updateInfo, setUpdateInfo] = React.useState(null);
       const [health, setHealth] = React.useState({ loading: true });
       const [evidence, setEvidence] = React.useState(null);
+      const [categoryCollapsed, setCategoryCollapsed] = React.useState({});
       const [drawerBox, setDrawerBox] = React.useState(null);
       const [drawerOpen, setDrawerOpen] = React.useState(false);
       const [lightbox, setLightbox] = React.useState(null);
@@ -2384,6 +2517,10 @@ window.__ModuleLoader__.load({
       const closeTimerRef = React.useRef(0);
       const openFrameRef = React.useRef(0);
       const reduceMotion = prefersReducedMotion();
+
+      const toggleCategory = (category) => {
+        setCategoryCollapsed((current) => ({ ...current, [category]: !current[category] }));
+      };
 
       const clearCloseTimer = () => {
         if (closeTimerRef.current) {
@@ -2898,14 +3035,7 @@ window.__ModuleLoader__.load({
             h(
               "div",
               {
-                style: {
-                  ...s.panel,
-                  display: "flex",
-                  flexDirection: "column",
-                  flex: "1 1 auto",
-                  minHeight: 0,
-                  overflow: "hidden",
-                },
+                style: s.panel,
               },
               h(
                 "div",
@@ -3124,7 +3254,7 @@ window.__ModuleLoader__.load({
           h("div", { style: { ...s.mono, marginBottom: 4 } }, label),
           h("div", { style: { fontSize: 15, fontWeight: 600, color: C.text } }, value),
         );
-      const title = task.data?.basic?.name || "未命名";
+      const title = task.data?.basic?.name || task.data?.review?.file?.title || "未命名";
       const set = (patch) => setForm((current) => ({ ...current, ...patch }));
       const growHeight = (el) => {
         if (!el) return;
@@ -4081,7 +4211,7 @@ window.__ModuleLoader__.load({
               const link = String(form.link || "").trim();
               if (!link) throw new Error("请先粘贴受审文件链接");
               const doc = await call("doc.read", { target: link });
-              set({ review: { ...form.review, file: { url: link, title: doc.title || link, ok: true, chars: doc.chars } }, link: "" });
+              set({ review: { ...form.review, file: { url: link, title: doc.title || link, ok: true, chars: doc.chars } }, basic: { ...form.basic, name: form.basic.name || doc.title || link }, link: "" });
             });
           return h(
             "div",
@@ -4106,7 +4236,7 @@ window.__ModuleLoader__.load({
                     run(async () => {
                       const dataBase64 = await fileToBase64(picked);
                       const uploaded = await call("source.upload", { name: picked.name, dataBase64, taskId: task.id, noStore: true });
-                      set({ review: { ...form.review, file: { ok: true, title: uploaded.title || picked.name, chars: uploaded.chars || 0, url: uploaded.url || "" } } });
+                      set({ review: { ...form.review, file: { ok: true, title: uploaded.title || picked.name, chars: uploaded.chars || 0, url: uploaded.url || "", textPath: uploaded.textPath || "" } }, basic: { ...form.basic, name: form.basic.name || uploaded.title || picked.name } });
                     });
                   },
                 }),
@@ -4186,12 +4316,7 @@ window.__ModuleLoader__.load({
 
         if (step === 4) {
           const issues = form.review.issues || [];
-          const dimensions = {};
-          issues.forEach((item, index) => {
-            const key = item.dimension || "内容";
-            if (!dimensions[key]) dimensions[key] = [];
-            dimensions[key].push({ item, index });
-          });
+          const groups = buildReviewGroups(issues);
           return h(
             "div",
             null,
@@ -4202,50 +4327,59 @@ window.__ModuleLoader__.load({
               h(
                 "div",
                 { style: s.rowMain },
-                h("div", null, issues.length ? `已生成 ${issues.length} 条意见` : "等待助手预审"),
+                h("div", null, issues.length ? `共 ${issues.length} 条意见` : "等待助手预审"),
                 h(
                   "div",
                   { style: s.mono },
                   issues.length
-                    ? `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议`
+                    ? `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；按 7 类分组`
                     : "",
                 ),
               ),
             ),
             issues.length
-              ? Object.keys(dimensions).map((dim) =>
-                  h(
+              ? groups.map((group) => {
+                  const collapsed = Boolean(categoryCollapsed[group.category]);
+                  return h(
                     "div",
-                    { key: dim },
+                    { key: group.category },
                     h(
-                      "div",
-                      { style: s.groupTitle },
-                      dim,
-                      h("span", { style: s.groupCount }, `${dimensions[dim].length} 条`),
+                      "button",
+                      {
+                        type: "button",
+                        style: s.groupHeader,
+                        onClick: () => toggleCategory(group.category),
+                        "aria-expanded": !collapsed,
+                      },
+                      h("span", { style: s.groupChevron }, collapsed ? "▸" : "▾"),
+                      h("span", null, group.category),
+                      h("span", { style: s.groupCount }, ` · ${group.entries.length} 条（严重 ${group.severe} / 建议 ${group.suggestion}）`),
                     ),
-                    h(
-                      "div",
-                      { style: s.issueList },
-                      dimensions[dim].map((entry) =>
-                        h(
+                    collapsed
+                      ? null
+                      : h(
                           "div",
-                          {
-                            key: entry.index,
-                            style: {
-                              ...s.issueCard,
-                              ...(reduceMotion ? { transition: "none" } : {}),
-                              ...(evidence && evidence.index === entry.index ? s.issueCardActive : {}),
-                            },
-                            onClick: () => selectEvidence(entry.index),
-                            title: "点击查看原文或原图",
-                          },
-                          h(IssueHeadline, { issue: entry.item }),
-                          h(IssueDetail, { issue: entry.item }),
+                          { style: s.issueList },
+                          group.entries.map((entry) =>
+                            h(
+                              "div",
+                              {
+                                key: entry.index,
+                                style: {
+                                  ...s.issueCard,
+                                  ...(reduceMotion ? { transition: "none" } : {}),
+                                  ...(evidence && evidence.index === entry.index ? s.issueCardActive : {}),
+                                },
+                                onClick: () => selectEvidence(entry.index),
+                                title: "点击查看原文或原图",
+                              },
+                              h(IssueHeadline, { issue: entry.item }),
+                              h(IssueDetail, { issue: entry.item }),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                )
+                  );
+                })
               : h("div", { style: s.note }, "点「交给助手预审」，助手按评审单检查后把意见写回 review.issues。"),
             issues.length
               ? h("div", { style: s.note }, "点击任意意见，可在右侧查看受审文件的原文或证据图片。")
@@ -4272,6 +4406,7 @@ window.__ModuleLoader__.load({
 
         // step 5
         const issues = form.review.issues || [];
+        const groups = buildReviewGroups(issues);
         const decisionLabel = { accepted: "采纳", rejected: "驳回", rewritten: "改写" };
         const setIssue = (index, patch) =>
           set({
@@ -4293,7 +4428,7 @@ window.__ModuleLoader__.load({
               )
               .join("\n");
             const markdown = [
-              `# ${form.basic.name || "技术文件"} · 预审意见`,
+              `# ${form.basic.name || form.review.file?.title || "技术文件"} · 预审意见`,
               "",
               "## 预审范围",
               "",
@@ -4312,9 +4447,9 @@ window.__ModuleLoader__.load({
             const result = await call("publish", {
               id: task.id,
               markdown,
-              title: `${form.basic.name || "技术文件"}-预审意见`,
+              title: `${form.basic.name || form.review.file?.title || "技术文件"}-预审意见`,
               classification: form.basic.classification,
-              name: `${form.basic.name || "技术文件"}-预审意见.docx`,
+              name: `${form.basic.name || form.review.file?.title || "技术文件"}-预审意见.docx`,
             });
             set({ publish: { url: result.url } });
             setTask(await call("tasks.get", { id: task.id }));
@@ -4323,70 +4458,6 @@ window.__ModuleLoader__.load({
         return h(
           "div",
           null,
-          h(
-            "div",
-            { style: s.row },
-            h("span", { style: { color: issues.length ? C.ok : C.warn } }, "●"),
-            h(
-              "div",
-              { style: s.rowMain },
-              h("div", null, `${issues.length} 条意见 · 已处置 ${decided}/${issues.length}`),
-              h(
-                "div",
-                { style: s.mono },
-                `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；可逐条采纳、驳回或改写；也可以先跳过，保存任务后再处理`,
-              ),
-            ),
-          ),
-          issues.map((it, i) =>
-            h(
-              "div",
-              { key: i, style: { ...s.row, flexDirection: "column", alignItems: "stretch", gap: 8 } },
-              h(
-                "div",
-                { style: { display: "flex", gap: 8, alignItems: "center" } },
-                h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"),
-                h(
-                  "div",
-                  { style: s.rowMain },
-                  h("div", null, `${it.location || ""} ${it.problem || ""}`),
-                  h("div", { style: s.mono }, `依据：${it.basis || "缺依据"}；建议：${it.suggestion || "-"}`),
-                ),
-                h("span", { style: s.badge }, it.dimension || "内容"),
-              ),
-              h(
-                "div",
-                { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
-                ["accepted", "rejected", "rewritten"].map((key) =>
-                  h(
-                    "button",
-                    {
-                      key,
-                      style: {
-                        ...s.btnSecondary,
-                        background: it.decision === key ? PRIMARY : "transparent",
-                        color: it.decision === key ? "#fff" : C.text,
-                      },
-                      onClick: () => setIssue(i, { decision: key }),
-                    },
-                    decisionLabel[key],
-                  ),
-                ),
-                it.decision === "rejected" || it.decision === "rewritten"
-                  ? h("input", {
-                      style: { ...s.input, flex: "1 1 220px" },
-                      value: it.decisionReason || "",
-                      placeholder: it.decision === "rejected" ? "驳回理由（必填）" : "改写说明",
-                      onChange: (e) => setIssue(i, { decisionReason: e.target.value }),
-                    })
-                  : null,
-              ),
-            ),
-          ),
-          h("div", { style: s.note }, "存档目录：技术资料起草库 / 技术资料出稿库 / 预审 / {评审类型} / {任务号} /。协助修订只按意见逐条改，不整体润色、不补写整节。"),
-          form.publish?.url
-            ? h("div", { style: s.note }, "已存档：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
-            : null,
           h(
             "div",
             { style: s.footer },
@@ -4439,7 +4510,107 @@ window.__ModuleLoader__.load({
             ),
             error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
           ),
+          h(
+            "div",
+            { style: s.row },
+            h("span", { style: { color: issues.length ? C.ok : C.warn } }, "●"),
+            h(
+              "div",
+              { style: s.rowMain },
+              h("div", null, `${issues.length} 条意见 · 已处置 ${decided}/${issues.length}`),
+              h(
+                "div",
+                { style: s.mono },
+                `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；可逐条采纳、驳回或改写；也可以先跳过，保存任务后再处理`,
+              ),
+            ),
+          ),
+          groups.map((group) => {
+            const collapsed = Boolean(categoryCollapsed[group.category]);
+            return h(
+              "div",
+              { key: group.category },
+              h(
+                "button",
+                {
+                  type: "button",
+                  style: s.groupHeader,
+                  onClick: () => toggleCategory(group.category),
+                  "aria-expanded": !collapsed,
+                },
+                h("span", { style: s.groupChevron }, collapsed ? "▸" : "▾"),
+                h("span", null, group.category),
+                h("span", { style: s.groupCount }, ` · ${group.entries.length} 条（严重 ${group.severe} / 建议 ${group.suggestion}）`),
+              ),
+              collapsed
+                ? null
+                : h(
+                    "div",
+                    { style: s.issueList },
+                    group.entries.map((entry) => {
+                      const it = entry.item;
+                      const i = entry.index;
+                      return h(
+                        "div",
+                        { key: i, style: { ...s.row, flexDirection: "column", alignItems: "stretch", gap: 8 } },
+                        h(
+                          "div",
+                          { style: { display: "flex", gap: 8, alignItems: "center" } },
+                          h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"),
+                          h(
+                            "div",
+                            { style: s.rowMain },
+                            h("div", null, `${it.location || ""} ${it.problem || ""}`),
+                            h("div", { style: s.mono }, `依据：${it.basis || "缺依据"}；建议：${it.suggestion || "-"}`),
+                          ),
+                          h("span", { style: s.badge }, it.dimension || "内容"),
+                        ),
+                        h(
+                          "div",
+                          { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
+                          ["accepted", "rejected", "rewritten"].map((key) =>
+                            h(
+                              "button",
+                              {
+                                key,
+                                style: {
+                                  ...s.btnSecondary,
+                                  background: it.decision === key ? PRIMARY : "transparent",
+                                  color: it.decision === key ? "#fff" : C.text,
+                                },
+                                onClick: () => setIssue(i, { decision: key }),
+                              },
+                              decisionLabel[key],
+                            ),
+                          ),
+                          it.decision === "rejected" || it.decision === "rewritten"
+                            ? h("input", {
+                                style: { ...s.input, flex: "1 1 220px" },
+                                value: it.decisionReason || "",
+                                placeholder: it.decision === "rejected" ? "驳回理由（必填）" : "改写说明",
+                                onChange: (e) => setIssue(i, { decisionReason: e.target.value }),
+                              })
+                            : null,
+                        ),
+                      );
+                    }),
+                  ),
+            );
+          }),
+          h("div", { style: s.note }, "存档目录：技术资料起草库 / 技术资料出稿库 / 预审 / {评审类型} / {任务号} /。协助修订只按意见逐条改，不整体润色、不补写整节。"),
+          form.publish?.url
+            ? h("div", { style: s.note }, "已存档：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
+            : null,
+
         );
+      };
+
+      const stepBodyWithActionBar = () => {
+        const body = stepBody();
+        if (!body || !React.isValidElement(body)) return body;
+        return React.cloneElement(body, {
+          style: { ...(body.props.style || {}), display: "flex", flexDirection: "column", gap: 12 },
+        });
       };
 
       const evidenceIssue =
@@ -4550,8 +4721,23 @@ window.__ModuleLoader__.load({
                     h(
                       "p",
                       { style: s.cardDesc },
-                      flow === "review" ? "预审意见已处置并归档，流程结束。" : "文档已出稿并落到知识库，流程结束。",
+                      flow === "review"
+                        ? form.review?.skipped
+                          ? "预审意见已保存，尚未逐条处置；可重新打开继续处理或修订出稿。"
+                          : "预审意见已处置并归档，流程结束。"
+                        : "文档已出稿并落到知识库，流程结束。",
                     ),
+                    flow === "review" && form.review?.skipped
+                      ? h(
+                          "button",
+                          {
+                            style: { ...s.btn, marginBottom: 12 },
+                            disabled: busy,
+                            onClick: () => savePatch({ step: 5, status: "active" }),
+                          },
+                          "重新打开意见处置",
+                        )
+                      : null,
                     h(
                       "div",
                       { style: { ...s.grid, marginTop: 12 } },
@@ -4562,6 +4748,30 @@ window.__ModuleLoader__.load({
                       stat("参考资料", `${(form.sources || []).length} 份`),
                       stat("相关会话", `${sessionCount} 个${archivedCount ? " · 已归档" : ""}`),
                     ),
+                    flow === "review" && (form.review.issues || []).length
+                      ? h(
+                          "div",
+                          { style: { ...s.card, marginTop: 12, padding: "12px 14px" } },
+                          h("div", { style: { fontWeight: 600, marginBottom: 8 } }, `预审意见 · ${form.review.issues.length} 条`),
+                          h(
+                            "div",
+                            { style: { maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 } },
+                            form.review.issues.map((it, index) =>
+                              h(
+                                "div",
+                                { key: index, style: { ...s.row, alignItems: "flex-start" } },
+                                h("span", { style: { ...s.badge, flex: "0 0 auto" } }, { accepted: "采纳", rejected: "驳回", rewritten: "改写" }[it.decision] || "待处置"),
+                                h(
+                                  "div",
+                                  { style: s.rowMain },
+                                  h("div", null, `${index + 1}. ${it.location || ""} ${it.problem || ""}`),
+                                  h("div", { style: s.mono }, `依据：${it.basis || "缺依据"}；建议：${it.suggestion || "-"}`),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : null,
                     flow === "draft" && form.publish?.url
                       ? h(
                           "div",
@@ -4606,7 +4816,7 @@ window.__ModuleLoader__.load({
                     h("div", { style: s.cardHead }, `${flow === "review" ? "R" : "D"}${step} · 第 ${step} 步 / 共 ${names.length} 步`),
                     h("h2", { style: s.cardTitle }, names[step - 1]),
                     h("p", { style: s.cardDesc }, STEP_DESC[flow][step - 1] || ""),
-                    stepBody(),
+                    stepBodyWithActionBar(),
                   ),
             ),
           ),
