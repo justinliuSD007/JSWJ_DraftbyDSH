@@ -862,6 +862,9 @@ window.__ModuleLoader__.load({
         headers: { "content-type": "application/json", "x-jswj": "1" },
         body: JSON.stringify({ action, ...payload }),
       });
+      if (res.status === 404) {
+        throw new Error("插件后端接口未加载（HTTP 404）：请在插件管理中禁用再启用插件；仍失败时查看 DSH 启动诊断。");
+      }
       const data = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
       if (!data.ok) throw new Error(data.error || "请求失败");
       return data.value;
@@ -2794,7 +2797,17 @@ window.__ModuleLoader__.load({
                     { style: { color: (health.issues || []).length ? C.err : C.warn } },
                     (health.issues || []).length ? `发现 ${health.issues.length} 项问题` : "有提醒",
                   ),
-                  (health.issues || []).map((item, index) => h("span", { key: `e-${index}`, style: { ...s.envHint, color: C.err } }, item)),
+                  (health.diagnostics || []).map((item, index) =>
+                    h(
+                      "div",
+                      { key: `e-${index}`, style: { ...s.envHint, color: C.err, width: "100%" } },
+                      h("b", null, item.problem),
+                      item.fix ? ` → ${item.fix}` : "",
+                    ),
+                  ),
+                  !(health.diagnostics || []).length
+                    ? (health.issues || []).map((item, index) => h("span", { key: `e-${index}`, style: { ...s.envHint, color: C.err } }, item))
+                    : null,
                   (health.warnings || []).map((item, index) => h("span", { key: `w-${index}`, style: { ...s.envHint, color: C.warn } }, item)),
                   h("button", { style: s.btnSmall, disabled: busy, onClick: checkHealth }, "重新自检"),
                 )
@@ -4321,7 +4334,7 @@ window.__ModuleLoader__.load({
               h(
                 "div",
                 { style: s.mono },
-                `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；每条必须采纳、驳回或改写，不能留待定`,
+                `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；可逐条采纳、驳回或改写；也可以先跳过，保存任务后再处理`,
               ),
             ),
           ),
@@ -4388,6 +4401,28 @@ window.__ModuleLoader__.load({
               ? h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。", true) }, "新建会话")
               : null,
             h("button", { style: s.btnSecondary, onClick: () => copyPrompt(5, "如需协助修订，只改意见指出的位置。") }, "复制指令"),
+            h(
+              "button",
+              { style: s.btnSecondary, disabled: busy, onClick: () => submit({ review: { ...form.review, issues, archived: true, skipped: true } }) },
+              "跳过处置，保存任务",
+            ),
+            h(
+              "button",
+              {
+                style: s.btnSecondary,
+                disabled: busy,
+                onClick: () =>
+                  handoff(
+                    5,
+                    `本任务已存档，现需依据 review.issues 的处置意见修订受审文件并出稿。
+受审文件：${form.review.file?.title || form.review.file?.url || "-"}
+本地解析文本：${form.review.file?.textPath || "无；请按受审文件链接读取正文"}
+要求：只改意见指出的位置，不整体润色、不补写整节；保留原结构和未涉及内容；用 jswj_render_docx 套 GY-F003，发布到知识库，并回写 publish.url。`,
+                    true,
+                  ),
+              },
+              "依据意见修订出稿",
+            ),
             h(
               "button",
               { style: { ...s.btnSecondary, ...(busy || !allDecided ? s.btnDisabled : {}) }, disabled: busy || !allDecided, onClick: archive },

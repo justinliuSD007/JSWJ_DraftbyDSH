@@ -1420,6 +1420,18 @@ async function downloadUpdate(cfg, version) {
   return { ok: true, path: file, version: info.latest, url: info.url, size: buffer.length };
 }
 
+function healthFix(problem) {
+  if (problem.includes("APP ID") || problem.includes("Secret")) return "在 profile 的 jswj-draft.config 填 appId / appSecret，或重新运行安装器";
+  if (problem.includes("spaceId")) return "检查 spaceId 是否为技术资料起草库的空间 ID";
+  if (problem.includes("知识空间")) return "检查 GO秘 应用是否开通知识库权限，以及 spaceId 是否正确";
+  if (problem.includes("草稿库")) return "检查 draftRootToken 是否指向「技术资料草稿库」节点";
+  if (problem.includes("Python")) return "检查 DSH 运行时 Python，或在配置里填 pythonPath";
+  if (problem.includes("模板")) return "重新安装插件，确认 template/GY-F003-cleaned.docx 存在";
+  if (problem.includes("Skill")) return "重载插件；仍失败时手工复制 skills/jswj-draftbydsh 到 ~/.dsh/skills";
+  if (problem.includes("总结")) return "检查 summaryWikiToken 与多维表格权限；不影响起草和出稿";
+  return "按提示检查配置和权限；处理后点「重新自检」";
+}
+
 async function healthCheck(cfg) {
   const checks = {
     appId: Boolean(String(cfg.appId ?? "").trim()),
@@ -1498,7 +1510,8 @@ async function healthCheck(cfg) {
     }
   }
 
-  return { ok: issues.length === 0, checks, issues, warnings };
+  const diagnostics = issues.map((problem) => ({ problem, fix: healthFix(problem) }));
+  return { ok: issues.length === 0, checks, issues, diagnostics, warnings };
 }
 
 async function updateWordFields(filePath) {
