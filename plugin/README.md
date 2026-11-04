@@ -1,6 +1,6 @@
-# 技术文件起草（JSWJ_DraftbyDSH）
+# 技术文件助手（JSWJ_DraftbyDSH）
 
-技术文件起草（JSWJ_DraftbyDSH），以下简称本插件，是面向飞书知识库的起草与 AI 预审 DSH bundle。本插件提供 9 个工具、一个分步任务向导页面：
+技术文件助手（JSWJ_DraftbyDSH），以下简称本插件，是面向飞书知识库的起草与 AI 预审 DSH bundle。本插件提供 9 个工具、一个分步任务向导页面：
 
 视觉按高域 VIS 基础部分实现：主色高域紫 `#3B3FB6`、辅助高域红 `#A64A97`、标准渐变 50°、界面字体 HarmonyOS Sans（未安装时回退系统中文黑体）。
 
@@ -35,7 +35,7 @@ plugin/
 
 ## 安装
 
-推荐用仓库根目录的 `pack-plugin.ps1` 打成 zip，交给对方在 DSH 插件管理里安装本地 bundle；详细步骤见 [INSTALL.md](./INSTALL.md) 和知识库「技术文件起草插件安装指南（图文）」：
+推荐用仓库根目录的 `pack-plugin.ps1` 打成 zip，交给对方在 DSH 插件管理里安装本地 bundle；详细步骤见 [INSTALL.md](./INSTALL.md) 和知识库「技术文件助手插件安装指南（图文）」：
 https://govy.feishu.cn/wiki/Xi2JwTgwjinj8KkslupcbhTznWh
 
 ```
@@ -50,7 +50,7 @@ plugin_manager action=install_bundle target=<本目录绝对路径>
 
 Skill 已随包放在 `skills/jswj-draftbydsh/`，插件启动时会自动写入 `~/.dsh/skills/`，不需要手工加载；个别环境未识别时再手工复制一次并重载。
 
-条目 id 为 `jswj-draft`，页面挂载在 `main`（key 同 id）与 `sidebar.panellist`（显示名「技术文件起草」）。
+条目 id 为 `jswj-draft`，页面挂载在 `main`（key 同 id）与 `sidebar.panellist`（显示名「技术文件助手」）。
 
 ## 配置
 
@@ -87,7 +87,7 @@ Skill 已随包放在 `skills/jswj-draftbydsh/`，插件启动时会自动写入
 - **D3 资料**：支持链接解析与 docx / md 上传；每份资料可选「原样套模板 / 参考写法 / 参考结构 / 背景资料」，上传件留存到 `参考资料库/{层级}/{板块}/`，抽出纯文本与内嵌图片路径写入任务 `sources[]`。
 - **预审 R1–R5**：确认开始 → 类型与评审单 → 文件与资料 → 预审 → 意见与修订；意见逐条采纳 / 驳回 / 改写，全部处置后才能存档。
 - 每步一个决策，门禁不过不能推进；左侧步骤栏显示已完成 / 当前 / 未开始。
-- 生成、预审以及成稿意见修订通过「交给助手」在「技术文件起草」工作区新建会话并把任务号交给助手；
+- 生成、预审以及成稿意见修订通过「交给助手」在「技术文件助手」工作区新建会话并把任务号交给助手；
   助手完成后用 `jswj_task_update` 写回，页面点「刷新」继续。
 - 出稿和预审存档由页面直接调用 Host 完成：渲染 GY-F003 Word → 上传 → 移入知识库 → 回显链接。
 

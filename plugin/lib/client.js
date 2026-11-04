@@ -1,5 +1,5 @@
 /**
- * 技术文件起草：分步任务向导。
+ * 技术文件助手：分步任务向导。
  *
  * 页面按 D1–D8 / R1–R5 推进，每步只做一个决策；状态读写走 Host 的 /api/jswj，
  * 生成、自检、预审、修订等需要模型的工作通过会话交给助手，助手用 jswj_task_update 写回。
@@ -50,7 +50,7 @@ window.__ModuleLoader__.load({
     }
 
     const DRAFT_STEPS = ["基本信息", "文档属性", "参考资料", "大纲与纲要", "生成", "成稿确认", "出稿"];
-    const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
+    const REVIEW_STEPS = ["类型与评审单", "文件与资料", "预审", "意见与修订"];
 
     const REVIEW_CATEGORY_ORDER = [
       "内容完整性",
@@ -146,11 +146,10 @@ window.__ModuleLoader__.load({
         "渲染 Word，发布到知识库并生成回执。",
       ],
       review: [
-        "确认预审范围与预计耗时，确认即建立任务。",
-        "选评审类型与评审单，评审单版本冻结。",
-        "提供受审文件；参考资料可选，缺资料时相关检查项标「缺依据」。",
-        "按评审单审内容、按模板审格式，交给助手执行。",
-        "查看意见并决定存档或协助修订，不输出通过结论。",
+        "选评审类型与检查单；检查单一经确认即冻结。只出待确认问题，不输出通过或不通过结论。",
+        "提供受审文件和参考资料；受审文件解析成功才能继续。",
+        "按检查单审内容、按模板审格式，交给助手执行。",
+        "查看意见并处置；可以跳过，也可以输出预审意见或修订出稿。",
       ],
     };
 
@@ -269,6 +268,21 @@ window.__ModuleLoader__.load({
         fontFamily: "inherit",
         cursor: "pointer",
       },
+      backBtn: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        height: 32,
+        padding: "0 12px",
+        borderRadius: 8,
+        border: `1px solid ${BORDER}`,
+        background: C.layer1,
+        color: C.text,
+        fontFamily: "inherit",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      },
       btnGhost: {
         height: 30,
         padding: "0 8px",
@@ -281,7 +295,7 @@ window.__ModuleLoader__.load({
         cursor: "pointer",
       },
       btnDisabled: { opacity: 0.5, cursor: "default" },
-      cards: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 },
+      cards: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, alignItems: "stretch" },
       entries: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 8 },
       entryGroup: { border: `1px solid ${BORDER}`, background: C.layer1, borderRadius: 12, padding: "14px 16px" },
       entryTitle: { fontSize: 12, color: C.sub, marginBottom: 10 },
@@ -359,14 +373,38 @@ window.__ModuleLoader__.load({
       entryTag: { fontSize: 10.5, color: BRAND, border: `1px solid ${C.line2}`, borderRadius: 9, padding: "1px 7px" },
       entryDesc: { fontSize: 12, color: C.sub, lineHeight: 1.7, marginBottom: 11 },
       entryHint: { fontSize: 11.5, color: C.sub, marginTop: 8 },
-      taskTop: { display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 6 },
-      taskStatus: { fontSize: 11, borderRadius: 9, padding: "2px 8px", whiteSpace: "nowrap", marginLeft: "auto" },
-      progressRow: { display: "flex", alignItems: "center", gap: 8, marginTop: 9 },
+      taskTop: { display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 4 },
+      taskTitle: {
+        flex: "1 1 auto",
+        minWidth: 0,
+        fontSize: 14.5,
+        fontWeight: 650,
+        lineHeight: 1.45,
+        color: C.text,
+        wordBreak: "break-word",
+        height: "2.9em",
+        overflow: "hidden",
+        display: "-webkit-box",
+        WebkitBoxOrient: "vertical",
+        WebkitLineClamp: 2,
+      },
+      taskStatus: {
+        flex: "0 0 auto",
+        fontSize: 11,
+        borderRadius: 9,
+        padding: "2px 8px",
+        whiteSpace: "nowrap",
+        marginTop: 1,
+      },
+      taskSub: { display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", fontSize: 12, color: C.sub, height: 20, overflow: "hidden" },
+      taskTime: { marginLeft: "auto", fontSize: 11.5, whiteSpace: "nowrap" },
+      taskProgressHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 11, fontSize: 11.5, color: C.sub },
+      progressRow: { display: "flex", alignItems: "center", gap: 8, marginTop: 6 },
       progressTrack: { flex: "1 1 auto", height: 5, borderRadius: 3, background: C.layer2, overflow: "hidden" },
       progressFill: { height: "100%", borderRadius: 3, background: GRADIENT },
       progressText: { fontSize: 11, color: C.sub, whiteSpace: "nowrap" },
-      taskNext: { fontSize: 12, color: C.sub, marginTop: 8, lineHeight: 1.6 },
-      taskActions: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 8 },
+      taskNext: { fontSize: 12, color: C.sub, marginTop: 8, lineHeight: 1.6, height: "3.2em", overflow: "hidden" },
+      taskActions: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9, borderTop: `1px solid ${BORDER_SOFT}` },
       empty: { border: `1px dashed ${BORDER_SOFT}`, borderRadius: 12, padding: "28px 20px", textAlign: "center", color: C.sub, marginTop: 12 },
       help: { border: `1px solid ${BORDER}`, background: C.layer1, borderRadius: 12, padding: "14px 16px", marginTop: 18, fontSize: 12.5, color: C.sub, lineHeight: 1.8 },
       envBar: {
@@ -464,8 +502,11 @@ window.__ModuleLoader__.load({
         boxShadow: "0 1px 2px rgba(15,18,35,0.05)",
         padding: "14px 16px",
         cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        boxSizing: "border-box",
       },
-      taskTitle: { fontSize: 14, fontWeight: 600, marginBottom: 6, color: C.text },
       taskMeta: { fontSize: 12, color: C.sub, display: "flex", gap: 10, flexWrap: "wrap" },
       badge: {
         display: "inline-flex",
@@ -1590,7 +1631,27 @@ window.__ModuleLoader__.load({
             setReady(true);
           })
           .catch((err) => {
-            if (alive) setError(String((err && err.message) || err));
+            if (!alive) return;
+            const sourceUrl = props.reviewFile?.url;
+            if (!sourceUrl) {
+              setError(String((err && err.message) || err));
+              return;
+            }
+            call("doc.read", { target: sourceUrl, full: true })
+              .then((doc) => {
+                if (!alive || !boxRef.current) return;
+                const text = String(doc.text || doc.preview || "");
+                const escape = (value) =>
+                  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                boxRef.current.innerHTML = text
+                  .split(/\n{2,}/)
+                  .map((block) => `<p style="margin:0 0 10px;line-height:1.75;">${escape(block).replace(/\n/g, "<br>")}</p>`)
+                  .join("");
+                setReady(true);
+              })
+              .catch((nextError) => {
+                if (alive) setError(String((nextError && nextError.message) || nextError));
+              });
           });
         return () => {
           alive = false;
@@ -2344,6 +2405,7 @@ window.__ModuleLoader__.load({
         } else if (hasText) {
           body = h(DocxViewer, {
             taskId: props.taskId,
+            reviewFile: props.reviewFile,
             quote: evidence.quote || "",
             section: evidence.section || "",
             reduceMotion: props.reduceMotion,
@@ -2433,7 +2495,7 @@ window.__ModuleLoader__.load({
         subjectLine,
         refLines,
         extra || "",
-        "完成后必须调用 jswj_task_update 把结果写回任务（generation / selfcheck / revision / review.issues），然后回到「技术文件起草」页面点刷新继续。",
+        "完成后必须调用 jswj_task_update 把结果写回任务（generation / selfcheck / revision / review.issues），然后回到「技术文件助手」页面点刷新继续。",
       ]
         .filter(Boolean)
         .join("\n");
@@ -2489,7 +2551,7 @@ window.__ModuleLoader__.load({
             "GOVY",
           ),
           h("div", { style: { width: 22, height: 2, background: GRADIENT, borderRadius: 1, margin: "4px 0 3px" } }),
-          h("div", { style: { fontSize: 10.5, color: C.sub, letterSpacing: "0.06em" } }, "技术文件起草"),
+          h("div", { style: { fontSize: 10.5, color: C.sub, letterSpacing: "0.06em" } }, "技术文件助手"),
         ),
       );
 
@@ -2508,6 +2570,7 @@ window.__ModuleLoader__.load({
       const [updateInfo, setUpdateInfo] = React.useState(null);
       const [health, setHealth] = React.useState({ loading: true });
       const [evidence, setEvidence] = React.useState(null);
+      const [opinionBusy, setOpinionBusy] = React.useState(false);
       const [categoryCollapsed, setCategoryCollapsed] = React.useState({});
       const [drawerBox, setDrawerBox] = React.useState(null);
       const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -2768,9 +2831,9 @@ window.__ModuleLoader__.load({
         const base = (form.basic?.name || form.review?.file?.title || task.id).trim();
         const labels =
           flow === "review"
-            ? { 4: "技术资料预审", 5: "预审意见与修订" }
+            ? { 3: "技术资料预审", 4: "预审意见与修订" }
             : { 4: "大纲与纲要草拟", 5: "正文生成", 6: "成稿确认与修订", 7: "出稿" };
-        return `${base} ${labels[stepNumber] || "技术文件起草"}`;
+        return `${base} ${labels[stepNumber] || "技术文件助手"}`;
       };
 
       const sessionFor = (stepNumber) => form.sessions?.[String(stepNumber)]?.sessionId;
@@ -2895,11 +2958,11 @@ window.__ModuleLoader__.load({
             h(
               "div",
               { style: s.head },
-              h("h1", { style: s.h1 }, "技术文件起草"),
+              h("h1", { style: s.h1 }, "技术文件助手"),
               h(
                 "div",
                 { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
-                h("span", { style: s.sub }, "模板统一 · 门禁推进 · 出稿即归档"),
+                h("span", { style: s.sub }, "从起草到出稿，帮你把每一步走完"),
                 !health.loading
                   ? h(
                       "span",
@@ -2971,12 +3034,7 @@ window.__ModuleLoader__.load({
                 )
               : null,
             error ? h("div", { style: { color: C.err, fontSize: 13, marginBottom: 12 } }, error) : null,
-            h(
-              "div",
-              { style: { ...s.envBar, margin: "0 0 16px" } },
-              h("span", { style: s.envLabel }, "使用方式"),
-              h("span", { style: s.envHint }, "选择起草或评审，按步骤完成；任务可随时继续。"),
-            ),
+            h("div", { style: { ...s.sub, marginBottom: 16 } }, "下方新建任务以开始"),
             ),
             h(
               "div",
@@ -3009,8 +3067,8 @@ window.__ModuleLoader__.load({
                   "div",
                   { style: s.entryRow },
                   h("button", { style: s.btn, onClick: () => newTask("draft") }, "技术文件"),
-                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（暂缓）"),
-                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "试验数据（预留）"),
+                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目"),
+                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "试验数据"),
                 ),
               ),
               h(
@@ -3020,14 +3078,14 @@ window.__ModuleLoader__.load({
                   "div",
                   { style: s.entryHead },
                   h("span", { style: s.entryTitle2 }, "评审技术资料"),
-                  h("span", { style: { ...s.entryTag, color: BRAND_ALT, borderColor: "rgba(166,74,151,0.35)" } }, "5 步"),
+                  h("span", { style: { ...s.entryTag, color: BRAND_ALT, borderColor: "rgba(166,74,151,0.35)" } }, "4 步"),
                 ),
                 h("div", { style: s.entryDesc }, "上传受审文件"),
                 h(
                   "div",
                   { style: s.entryRow },
                   h("button", { style: s.btn, onClick: () => newTask("review") }, "技术文件"),
-                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目（预留）"),
+                  h("button", { style: { ...s.btnSecondary, ...s.btnDisabled }, disabled: true }, "需求条目"),
                 ),
               ),
             ),
@@ -3052,34 +3110,46 @@ window.__ModuleLoader__.load({
             h(
               "div",
               { style: { ...s.stats, flex: "0 0 auto" } },
-              h("div", { style: { ...s.statCard, background: "rgba(59,63,182,0.08)", borderColor: "rgba(59,63,182,0.22)" } }, h("div", { style: s.statValue }, tasks.length), h("div", { style: s.statLabel }, "全部任务")),
-              h("div", { style: { ...s.statCard, background: "rgba(166,74,151,0.09)", borderColor: "rgba(166,74,151,0.25)" } }, h("div", { style: s.statValue }, groups[0][1].length), h("div", { style: s.statLabel }, "待处理")),
-              h("div", { style: { ...s.statCard, background: "rgba(59,63,182,0.10)", borderColor: "rgba(59,63,182,0.28)" } }, h("div", { style: s.statValue }, groups[1][1].length), h("div", { style: s.statLabel }, "进行中")),
-              h("div", { style: s.statCard }, h("div", { style: s.statValue }, groups[2][1].length), h("div", { style: s.statLabel }, "已完成")),
+              h(
+                "div",
+                {
+                  style: { ...s.statCard, background: "rgba(59,63,182,0.08)", borderColor: listFilter === "all" ? BRAND : "rgba(59,63,182,0.22)", cursor: "pointer" },
+                  onClick: () => setListFilter("all"),
+                },
+                h("div", { style: s.statValue }, tasks.length),
+                h("div", { style: s.statLabel }, "全部任务"),
+              ),
+              h(
+                "div",
+                {
+                  style: { ...s.statCard, background: "rgba(166,74,151,0.09)", borderColor: listFilter === "pending" ? BRAND_ALT : "rgba(166,74,151,0.25)", cursor: "pointer" },
+                  onClick: () => setListFilter("pending"),
+                },
+                h("div", { style: s.statValue }, groups[0][1].length),
+                h("div", { style: s.statLabel }, "待处理"),
+              ),
+              h(
+                "div",
+                {
+                  style: { ...s.statCard, background: "rgba(59,63,182,0.10)", borderColor: listFilter === "active" ? BRAND : "rgba(59,63,182,0.28)", cursor: "pointer" },
+                  onClick: () => setListFilter("active"),
+                },
+                h("div", { style: s.statValue }, groups[1][1].length),
+                h("div", { style: s.statLabel }, "进行中"),
+              ),
+              h(
+                "div",
+                {
+                  style: { ...s.statCard, borderColor: listFilter === "done" ? C.ok : BORDER, cursor: "pointer" },
+                  onClick: () => setListFilter("done"),
+                },
+                h("div", { style: s.statValue }, groups[2][1].length),
+                h("div", { style: s.statLabel }, "已完成"),
+              ),
             ),
             h(
               "div",
               { style: { ...s.listToolbar, flex: "0 0 auto" } },
-              h(
-                "div",
-                { style: s.filterRow },
-                [
-                  ["all", `全部 ${tasks.length}`],
-                  ["pending", `待处理 ${groups[0][1].length}`],
-                  ["active", `进行中 ${groups[1][1].length}`],
-                  ["done", `已完成 ${groups[2][1].length}`],
-                ].map(([key, label]) =>
-                  h(
-                    "button",
-                    {
-                      key,
-                      style: { ...s.filterBtn, ...(listFilter === key ? s.filterBtnActive : {}) },
-                      onClick: () => setListFilter(key),
-                    },
-                    label,
-                  ),
-                ),
-              ),
               h("input", {
                 style: s.search,
                 value: query,
@@ -3131,7 +3201,7 @@ window.__ModuleLoader__.load({
                           const current = Math.min(Number(item.step) || 1, total);
                           const pct = item.status === "completed" ? 100 : Math.round((current / total) * 100);
                           const status = statusMeta(item);
-                          const flowLabel = item.flow === "review" ? "评审" : "创建";
+                          const flowLabel = item.flow === "review" ? "评审" : "起草";
                           const nextHint =
                             item.status === "completed"
                               ? "流程已完成，可打开查看记录和已出稿文件。"
@@ -3158,17 +3228,31 @@ window.__ModuleLoader__.load({
                             ),
                             h(
                               "div",
-                              { style: s.taskMeta },
-                              h("span", { style: s.badge }, flowLabel),
-                              h("span", null, item.id),
+                              { style: s.taskSub },
+                              h(
+                                "span",
+                                {
+                                  style: {
+                                    ...s.badge,
+                                    color: item.flow === "review" ? BRAND_ALT : BRAND,
+                                    background: item.flow === "review" ? "rgba(166,74,151,0.10)" : "rgba(59,63,182,0.10)",
+                                  },
+                                },
+                                flowLabel,
+                              ),
+                              h("span", { style: s.mono }, item.id),
+                              h("span", { style: s.taskTime }, `更新 ${String(item.updatedAt || "").replace("T", " ").slice(0, 16)}`),
+                            ),
+                            h(
+                              "div",
+                              { style: s.taskProgressHead },
                               h("span", null, `${current}/${total} · ${item.stepName}`),
-                              h("span", null, `更新 ${String(item.updatedAt || "").replace("T", " ").slice(0, 16)}`),
+                              h("span", null, `${pct}%`),
                             ),
                             h(
                               "div",
                               { style: s.progressRow },
                               h("div", { style: s.progressTrack }, h("div", { style: { ...s.progressFill, width: `${pct}%` } })),
-                              h("span", { style: s.progressText }, `${pct}%`),
                             ),
                             h("div", { style: s.taskNext }, nextHint),
                             h(
@@ -3254,7 +3338,7 @@ window.__ModuleLoader__.load({
           h("div", { style: { ...s.mono, marginBottom: 4 } }, label),
           h("div", { style: { fontSize: 15, fontWeight: 600, color: C.text } }, value),
         );
-      const title = task.data?.basic?.name || task.data?.review?.file?.title || "未命名";
+      const title = task.data?.basic?.name || task.data?.review?.file?.title || (flow === "review" ? "评审技术文件" : "起草技术文件");
       const set = (patch) => setForm((current) => ({ ...current, ...patch }));
       const growHeight = (el) => {
         if (!el) return;
@@ -4129,30 +4213,11 @@ window.__ModuleLoader__.load({
 
         // review flow
         if (step === 1) {
-          return h(
-            "div",
-            null,
-            h("div", { style: s.note }, "预审只出「待确认问题」，不输出通过或不通过的结论。预计 3–5 分钟，可中断续做。"),
-            h("label", { style: { ...s.row, marginTop: 12, cursor: "pointer" } }, h("input", { type: "checkbox", checked: Boolean(form.review.confirmed), onChange: (e) => set({ review: { ...form.review, confirmed: e.target.checked } }) }), h("span", null, "确认开始，建立预审任务")),
-            h(
-              "div",
-              { style: s.footer },
-              h("button", { style: s.btnSecondary, onClick: () => setScreen("list") }, "返回列表"),
-              h(
-                "button",
-                { style: { ...s.btn, ...(busy || !form.review.confirmed ? s.btnDisabled : {}) }, disabled: busy || !form.review.confirmed, onClick: () => submit({ review: { ...form.review, confirmed: true } }) },
-                "下一步：类型与评审单",
-              ),
-              error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
-            ),
-          );
-        }
-
-        if (step === 2) {
           const options = {
             需求规范: "需求规范评审单 v1（28 项）",
             技术方案: "技术方案评审单 v2（32 项）",
             安全性文件: "安全性文件评审单 v1（24 项）",
+          审定计划: "审定计划评审单 v1（39 项）",
           };
           return h(
             "div",
@@ -4165,7 +4230,7 @@ window.__ModuleLoader__.load({
                 h(
                   "select",
                   { style: s.input, value: form.review.type || "需求规范", onChange: (e) => set({ review: { ...form.review, type: e.target.value, checklist: options[e.target.value] || "" } }) },
-                  ["需求规范", "技术方案", "安全性文件"].map((v) => h("option", { key: v }, v)),
+                  ["需求规范", "技术方案", "安全性文件", "审定计划"].map((v) => h("option", { key: v }, v)),
                 ),
               ),
               h("div", { style: s.field },
@@ -4173,7 +4238,7 @@ window.__ModuleLoader__.load({
                 h(
                   "select",
                   { style: s.input, value: form.review.checklist || options[form.review.type] || "", onChange: (e) => set({ review: { ...form.review, checklist: e.target.value } }) },
-                  Object.values(options).map((v) => h("option", { key: v }, v)),
+                  [options[form.review.type]].filter(Boolean).map((v) => h("option", { key: v }, v)),
                 ),
               ),
             ),
@@ -4194,18 +4259,18 @@ window.__ModuleLoader__.load({
                   )
                 : null,
 
-            h("div", { style: s.note }, "类型与评审单的适用类型必须一致；一个任务只用一份评审单，中途更换须新建任务。"),
+            h("div", { style: s.note }, "预审只出待确认问题，不输出通过或不通过结论。检查单一经确认即冻结，中途更换须新建任务。"),
             h(
               "div",
               { style: s.footer },
-              h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
+              step > 1 ? h("button", { style: s.btnSecondary, onClick: backStep }, "上一步") : null,
               h("button", { style: { ...s.btn, ...(busy ? s.btnDisabled : {}) }, disabled: busy, onClick: () => submit({ review: { ...form.review, checklist: form.review.checklist || options[form.review.type], subtype: form.review.type === "安全性文件" ? (form.review.subtype || "功能危害评估报告") : "" } }) }, "下一步：文件与资料"),
               error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
             ),
           );
         }
 
-        if (step === 3) {
+        if (step === 2) {
           const parse = () =>
             run(async () => {
               const link = String(form.link || "").trim();
@@ -4306,7 +4371,16 @@ window.__ModuleLoader__.load({
               h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
               h(
                 "button",
-                { style: { ...s.btn, ...(busy || !form.review.file?.ok ? s.btnDisabled : {}) }, disabled: busy || !form.review.file?.ok, onClick: () => submit({ review: { ...form.review } }) },
+                {
+                  style: { ...s.btn, ...(busy || !form.review.file?.ok ? s.btnDisabled : {}) },
+                  disabled: busy || !form.review.file?.ok,
+                  onClick: () => {
+                    const reviewedName = String(form.review.file?.title || form.basic.name || "预审任务")
+                      .replace(/\.(docx?|md|markdown|txt)$/i, "")
+                      .trim();
+                    submit({ review: { ...form.review }, basic: { ...form.basic, name: form.basic.name || reviewedName } });
+                  },
+                },
                 "下一步：预审",
               ),
               error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
@@ -4314,7 +4388,7 @@ window.__ModuleLoader__.load({
           );
         }
 
-        if (step === 4) {
+        if (step === 3) {
           const issues = form.review.issues || [];
           const groups = buildReviewGroups(issues);
           return h(
@@ -4389,11 +4463,11 @@ window.__ModuleLoader__.load({
               { style: s.footer },
               h("button", { style: s.btnSecondary, onClick: backStep }, "上一步"),
               h("button", { style: s.btnSecondary, onClick: refreshTask }, "刷新"),
-              h("button", { style: s.btnSecondary, onClick: () => handoff(4) }, sessionFor(4) ? "打开本步会话" : "交给助手预审"),
-              sessionFor(4)
-                ? h("button", { style: s.btnSecondary, onClick: () => handoff(4, undefined, true) }, "新建会话")
+              h("button", { style: s.btnSecondary, onClick: () => handoff(3) }, sessionFor(3) ? "打开本步会话" : "交给助手预审"),
+              sessionFor(3)
+                ? h("button", { style: s.btnSecondary, onClick: () => handoff(3, undefined, true) }, "新建会话")
                 : null,
-              h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4) }, "复制指令"),
+              h("button", { style: s.btnSecondary, onClick: () => copyPrompt(3) }, "复制指令"),
               h(
                 "button",
                 { style: { ...s.btn, ...(busy || issues.length === 0 ? s.btnDisabled : {}) }, disabled: busy || issues.length === 0, onClick: () => submit({}) },
@@ -4404,7 +4478,7 @@ window.__ModuleLoader__.load({
           );
         }
 
-        // step 5
+        // step 4
         const issues = form.review.issues || [];
         const groups = buildReviewGroups(issues);
         const decisionLabel = { accepted: "采纳", rejected: "驳回", rewritten: "改写" };
@@ -4417,44 +4491,72 @@ window.__ModuleLoader__.load({
           });
         const decided = issues.filter((it) => it.decision).length;
         const allDecided = issues.length > 0 && decided === issues.length;
-        const archive = () =>
-          run(async () => {
-            const rows = issues
-              .map(
-                (it, i) =>
-                  `| ${i + 1} | ${it.severity || "建议"} | ${it.dimension || "内容"} | ${it.location || ""} | ${
-                    it.problem || ""
-                  } | ${it.basis || "缺依据"} | ${it.suggestion || ""} | ${decisionLabel[it.decision] || "待定"} |`,
-              )
-              .join("\n");
+        const archive = () => {
+          setOpinionBusy(true);
+          set({ publish: null });
+          return run(async () => {
+            try {
+            const severe = issues.filter((it) => it.severity === "严重").length;
+            const suggestion = issues.length - severe;
+            const checklistByType = {
+              需求规范: "需求规范评审单 v1（28 项）",
+              技术方案: "技术方案评审单 v2（32 项）",
+              安全性文件: "安全性文件评审单 v1（24 项）",
+                审定计划: "审定计划评审单 v1（39 项）",
+            };
+            const checklistText = String(form.review.checklist || "").trim() || checklistByType[form.review.type] || "未填写";
+            const typeText = `${form.review.type || "未填写"}${form.review.subtype ? ` / ${form.review.subtype}` : ""}`;
+            const fileText = form.review.file?.title || form.review.file?.url || form.basic.name || "未记录";
+            const opinionBase = String(form.review.file?.title || form.basic.name || "技术文件")
+              .replace(/\.(docx?|md|markdown|txt)$/i, "")
+              .trim();
+            const issueLines = [];
+            let seq = 0;
+            for (const group of groups) {
+              issueLines.push(`**${group.category}**`);
+              issueLines.push("");
+              for (const entry of group.entries) {
+                const it = entry.item;
+                seq += 1;
+                issueLines.push(`**${seq}. ${it.severity || "建议"}｜${it.location || "未标注位置"}**`);
+                issueLines.push(`**问题：**${it.problem || ""}`);
+                issueLines.push(`**意见依据：**${it.basis || "缺依据"}`);
+                issueLines.push(`**建议修订方式：**${it.suggestion || "-"}`);
+                issueLines.push(`**处置：**${decisionLabel[it.decision] || "待定"}`);
+                issueLines.push("");
+              }
+            }
             const markdown = [
               `# ${form.basic.name || form.review.file?.title || "技术文件"} · 预审意见`,
               "",
-              "## 预审范围",
+              "**预审对象**",
+              `**受审文件：**${fileText}`,
+              `**文件类型：**${typeText}`,
+              `**使用检查单：**${checklistText}`,
+              `**任务号：**${task.id}`,
               "",
-              `评审类型：${form.review.type}；评审单：${form.review.checklist}；受审文件：${form.review.file?.title || "-"}。`,
+              "**意见汇总**",
+              `共 ${issues.length} 条意见，其中严重 ${severe} 条、建议 ${suggestion} 条。`,
               "",
-              "## 意见清单",
+              "**意见清单**",
               "",
-              "| # | 等级 | 维度 | 位置 | 问题 | 依据 | 建议 | 处置 |",
-              "|---|---|---|---|---|---|---|---|",
-              rows,
-              "",
-              "## 说明",
-              "",
+              ...issueLines,
+              "**说明**",
               "本意见书只列待确认问题，不输出通过或不通过结论。",
             ].join("\n");
-            const result = await call("publish", {
+            const result = await call("review.publish", {
               id: task.id,
               markdown,
-              title: `${form.basic.name || form.review.file?.title || "技术文件"}-预审意见`,
-              classification: form.basic.classification,
-              name: `${form.basic.name || form.review.file?.title || "技术文件"}-预审意见.docx`,
+              title: `${opinionBase || "技术文件"}-预审意见`,
             });
-            set({ publish: { url: result.url } });
+            set({ publish: { url: result.url, at: result.at || new Date().toISOString() } });
             setTask(await call("tasks.get", { id: task.id }));
-            setNotice("意见书已存档。");
+            setNotice("预审意见已输出到知识库。");
+            } finally {
+              setOpinionBusy(false);
+            }
           });
+        };
         return h(
           "div",
           null,
@@ -4467,11 +4569,11 @@ window.__ModuleLoader__.load({
               { style: s.btnSecondary, disabled: busy, onClick: () => savePatch({ data: { review: { ...form.review, issues } } }) },
               "保存处置",
             ),
-            h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。") }, sessionFor(5) ? "打开本步会话" : "交给助手协助修订"),
-            sessionFor(5)
-              ? h("button", { style: s.btnSecondary, onClick: () => handoff(5, "如需协助修订，只改意见指出的位置。", true) }, "新建会话")
+            h("button", { style: s.btnSecondary, onClick: () => handoff(4, "如需协助修订，只改意见指出的位置。") }, sessionFor(4) ? "打开本步会话" : "交给助手协助修订"),
+            sessionFor(4)
+              ? h("button", { style: s.btnSecondary, onClick: () => handoff(4, "如需协助修订，只改意见指出的位置。", true) }, "新建会话")
               : null,
-            h("button", { style: s.btnSecondary, onClick: () => copyPrompt(5, "如需协助修订，只改意见指出的位置。") }, "复制指令"),
+            h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4, "如需协助修订，只改意见指出的位置。") }, "复制指令"),
             h(
               "button",
               { style: s.btnSecondary, disabled: busy, onClick: () => submit({ review: { ...form.review, issues, archived: true, skipped: true } }) },
@@ -4496,6 +4598,11 @@ window.__ModuleLoader__.load({
             ),
             h(
               "button",
+              { style: s.btnSecondary, disabled: busy || issues.length === 0, onClick: archive },
+              opinionBusy ? "正在输出…" : "单独输出预审意见",
+            ),
+            h(
+              "button",
               { style: { ...s.btnSecondary, ...(busy || !allDecided ? s.btnDisabled : {}) }, disabled: busy || !allDecided, onClick: archive },
               "存档意见书",
             ),
@@ -4510,6 +4617,48 @@ window.__ModuleLoader__.load({
             ),
             error ? h("span", { style: { ...s.status, color: C.err } }, error) : null,
           ),
+          opinionBusy
+            ? h(
+                "div",
+                {
+                  style: {
+                    ...s.row,
+                    borderColor: "rgba(199,120,0,0.35)",
+                    background: "rgba(199,120,0,0.08)",
+                  },
+                },
+                h("span", { style: { color: C.warn, fontWeight: 700 } }, "…"),
+                h(
+                  "div",
+                  { style: s.rowMain },
+                  h("div", { style: { fontWeight: 600 } }, "正在输出预审意见…"),
+                  h("div", { style: s.mono }, "生成飞书云文档中，请稍候"),
+                ),
+              )
+            : form.publish?.url
+              ? h(
+                  "div",
+                  {
+                    style: {
+                      ...s.row,
+                      borderColor: "rgba(18,160,92,0.35)",
+                      background: "rgba(18,160,92,0.08)",
+                    },
+                  },
+                  h("span", { style: { color: C.ok, fontWeight: 700 } }, "✓"),
+                  h(
+                    "div",
+                    { style: s.rowMain },
+                    h("div", { style: { fontWeight: 600 } }, "预审意见已输出到知识库"),
+                    h(
+                      "div",
+                      { style: s.mono },
+                      `${form.publish.at ? String(form.publish.at).replace("T", " ").slice(0, 19) + " · " : ""}${form.publish.url}`,
+                    ),
+                  ),
+                  h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, "打开"),
+                )
+              : null,
           h(
             "div",
             { style: s.row },
@@ -4649,7 +4798,7 @@ window.__ModuleLoader__.load({
           h(
             "div",
             { style: s.head },
-            h("button", { style: s.btnGhost, onClick: () => setScreen("list") }, "← 任务列表"),
+            h("button", { style: s.backBtn, onClick: () => setScreen("list") }, "← 任务列表"),
             h("h1", { style: s.h1 }, title),
             h("span", { style: s.badge }, flow === "review" ? "预审" : "起草"),
             h("span", { style: s.mono }, task.id),
@@ -4679,7 +4828,7 @@ window.__ModuleLoader__.load({
               h(
                 "div",
                 { style: s.railMeta },
-                `${flow === "review" ? "技术资料预审" : "技术文件起草"} · ${step}/${names.length}${
+                `${flow === "review" ? "技术资料预审" : "技术文件助手"} · ${step}/${names.length}${
                   reached > step ? ` · 已推进到 ${reached}` : ""
                 }`,
               ),
@@ -4823,6 +4972,7 @@ window.__ModuleLoader__.load({
         ),
         h(EvidenceDrawer, {
           taskId: task.id,
+          reviewFile: form.review?.file || {},
           index: evidence ? evidence.index : -1,
           issue: evidenceIssue,
           panelStyle: drawerStyle,
@@ -4897,7 +5047,7 @@ window.__ModuleLoader__.load({
       );
       ctx.slots.inject("sidebar.panellist", () =>
         ctx.slots.register(
-          { name: "sidebar.panellist", id: PANEL_ID, order: 20, label: () => "技术文件起草" },
+          { name: "sidebar.panellist", id: PANEL_ID, order: 20, label: () => "技术文件助手" },
           JswjIcon,
         ),
       );

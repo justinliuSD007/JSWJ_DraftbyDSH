@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -767,7 +767,7 @@ namespace JswjSetup
 
         public InstallForm()
         {
-            Text = "技术文件起草 · 安装程序";
+            Text = "技术文件助手 · 安装程序";
             ClientSize = new Size(620, 640);
             MinimumSize = new Size(640, 560);
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -788,7 +788,7 @@ namespace JswjSetup
             int y = 16;
 
             var title = new Label();
-            title.Text = "技术文件起草 · 安装程序";
+            title.Text = "技术文件助手 · 安装程序";
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
             title.SetBounds(24, y, 572, 26);
             title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -972,7 +972,7 @@ namespace JswjSetup
             int y = 16;
 
             var title = new Label();
-            title.Text = "技术文件起草 · 安装程序";
+            title.Text = "技术文件助手 · 安装程序";
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
             title.SetBounds(24, y, 572, 26);
             _precheckPage.Controls.Add(title);

@@ -874,6 +874,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           objToken: doc.objToken ?? "",
           chars: content.length,
           preview: content.slice(0, 240),
+          text: body.full ? content : "",
         };
         break;
       }
@@ -1015,6 +1016,34 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         const listArgs = {};
         if (body.parent !== undefined && body.parent !== null && body.parent !== "") listArgs.parent = String(body.parent);
         value = await tool("jswj_wiki_list").execute(listArgs, {});
+        break;
+      }
+      case "review.publish": {
+        const markdown = String(body.markdown ?? "").trim();
+        const title = String(body.title ?? "").trim();
+        if (!markdown) throw new Error("预审意见内容不能为空");
+        if (!title) throw new Error("预审意见标题不能为空");
+        const outRoot = await ensureWikiChild(cfg, cfg.rootToken || "", "技术资料出稿库");
+        const reviewNode = await ensureWikiChild(cfg, outRoot, "文件评审");
+        const made = await tool("jswj_wiki_create").execute({ parent: reviewNode, title }, {});
+        const content = markdown.replace(/^#\s+.*\n+/, "");
+        await tool("jswj_doc_append").execute({ target: made.nodeToken, content }, {});
+        const base = String(cfg.wikiBaseUrl || "https://govy.feishu.cn").replace(/\/$/, "");
+        const url = `${base}/wiki/${made.nodeToken}`;
+        const at = new Date().toISOString();
+        if (body.id) {
+          const current = await getTask(String(body.id));
+          await patchTask(String(body.id), {
+            data: {
+              publish: { url, nodeToken: made.nodeToken, title, at },
+              review: {
+                ...(current.data?.review || {}),
+                opinion: { url, nodeToken: made.nodeToken, title, at },
+              },
+            },
+          });
+        }
+        value = { url, nodeToken: made.nodeToken, title, at };
         break;
       }
       case "publish": {
@@ -1817,10 +1846,32 @@ function apply(ctx, config = {}) {
           if (String(err.message).includes("只能向 docx")) throw err;
         }
 
+        const inline = (text) => {
+          const elements = [];
+          const pattern = /\*\*(.+?)\*\*/g;
+          let cursor = 0;
+          let match;
+          while ((match = pattern.exec(text))) {
+            if (match.index > cursor) elements.push({ text_run: { content: text.slice(cursor, match.index) } });
+            elements.push({
+              text_run: {
+                content: match[1],
+                text_element_style: { bold: true },
+              },
+            });
+            cursor = match.index + match[0].length;
+          }
+          if (cursor < text.length) elements.push({ text_run: { content: text.slice(cursor) } });
+          return elements.length ? elements : [{ text_run: { content: text } }];
+        };
+
         const blocks = [];
         for (const raw of content.split(/\r?\n/)) {
           const line = raw.trim();
-          if (!line) continue;
+          if (!line) {
+            blocks.push({ block_type: 2, text: { elements: [{ text_run: { content: " " } }], style: {} } });
+            continue;
+          }
           if (line === "---" || line === "***") {
             blocks.push({ block_type: 22, divider: {} });
             continue;
@@ -1829,22 +1880,22 @@ function apply(ctx, config = {}) {
           if ((m = /^(#{1,3})\s+(.*)$/.exec(line))) {
             const level = m[1].length;
             const key = ["heading1", "heading2", "heading3"][level - 1];
-            blocks.push({ block_type: level + 2, [key]: { elements: [{ text_run: { content: m[2] } }], style: {} } });
+            blocks.push({ block_type: level + 2, [key]: { elements: inline(m[2]), style: {} } });
             continue;
           }
           if ((m = /^[-*]\s+(.*)$/.exec(line))) {
-            blocks.push({ block_type: 12, bullet: { elements: [{ text_run: { content: m[1] } }], style: {} } });
+            blocks.push({ block_type: 12, bullet: { elements: inline(m[1]), style: {} } });
             continue;
           }
           if ((m = /^\d+\.\s+(.*)$/.exec(line))) {
-            blocks.push({ block_type: 13, ordered: { elements: [{ text_run: { content: m[1] } }], style: {} } });
+            blocks.push({ block_type: 13, ordered: { elements: inline(m[1]), style: {} } });
             continue;
           }
           if ((m = /^>\s?(.*)$/.exec(line))) {
-            blocks.push({ block_type: 15, quote: { elements: [{ text_run: { content: m[1] } }], style: {} } });
+            blocks.push({ block_type: 15, quote: { elements: inline(m[1]), style: {} } });
             continue;
           }
-          blocks.push({ block_type: 2, text: { elements: [{ text_run: { content: line } }], style: {} } });
+          blocks.push({ block_type: 2, text: { elements: inline(line), style: {} } });
         }
 
         // 飞书单次 children 创建有数量上限，按 40 分批发。

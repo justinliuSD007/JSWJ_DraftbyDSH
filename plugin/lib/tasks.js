@@ -22,7 +22,7 @@ export const DRAFT_STEPS = [
   "出稿",
 ];
 
-export const REVIEW_STEPS = ["确认开始", "类型与评审单", "文件与资料", "预审", "意见与修订"];
+export const REVIEW_STEPS = ["类型与评审单", "文件与资料", "预审", "意见与修订"];
 
 export function stepsOf(flow) {
   return flow === "review" ? REVIEW_STEPS : DRAFT_STEPS;
@@ -53,7 +53,7 @@ function isEmptyTask(task) {
   if (task.status !== "active" || Number(task.step) !== 1) return false;
   const d = task.data || {};
   if (task.flow === "review") {
-    return !d.review?.confirmed && !d.review?.file?.ok && (d.review?.issues ?? []).length === 0;
+    return !d.review?.file?.ok && !d.review?.checklist && (d.review?.issues ?? []).length === 0;
   }
   return (
     !String(d.basic?.name ?? "").trim() &&
@@ -101,10 +101,10 @@ function inferMaxStep(task) {
   const d = task.data || {};
   let n = Number(task.step) || 1;
   if (task.flow === "review") {
-    if (d.review?.archived) n = Math.max(n, 5);
-    if ((d.review?.issues ?? []).length) n = Math.max(n, 4);
-    if (d.review?.file?.ok) n = Math.max(n, 3);
-    if (d.review?.checklist) n = Math.max(n, 2);
+    if (d.review?.archived) n = Math.max(n, 4);
+    if ((d.review?.issues ?? []).length) n = Math.max(n, 3);
+    if (d.review?.file?.ok) n = Math.max(n, 2);
+    if (d.review?.checklist) n = Math.max(n, 1);
   } else {
     if (d.publish?.url) n = Math.max(n, 7);
     if (d.draft?.ready) n = Math.max(n, 6);
@@ -125,6 +125,24 @@ function normalize(task) {
     task.maxStep = map[task.maxStep ?? task.step] ?? Math.min(Number(task.maxStep ?? task.step) || 1, 7);
     task.stepsVersion = 2;
   }
+  // 旧版预审流是 5 步（确认开始独立），迁移到 4 步：2-5 -> 1-4。
+  if (task.flow === "review" && task.stepsVersion !== 3) {
+    const map = { 1: 1, 2: 1, 3: 2, 4: 3, 5: 4 };
+    const oldStep = Number(task.step) || 1;
+    const oldMax = Number(task.maxStep ?? task.step) || 1;
+    task.step = map[oldStep] ?? Math.min(oldStep, 4);
+    task.maxStep = map[oldMax] ?? Math.min(oldMax, 4);
+    if (task.data?.sessions && typeof task.data.sessions === "object") {
+      const sessions = {};
+      for (const [key, value] of Object.entries(task.data.sessions)) {
+        const number = Number(key);
+        const next = number >= 2 ? number - 1 : number;
+        if (Number.isFinite(next) && next >= 1) sessions[String(next)] = value;
+      }
+      task.data.sessions = sessions;
+    }
+    task.stepsVersion = 3;
+  }
   if (!task.maxStep) task.maxStep = inferMaxStep(task);
   return task;
 }
@@ -137,7 +155,7 @@ function summarize(task) {
     step: task.maxStep,
     maxStep: task.maxStep,
     status: task.status,
-    title: task.data?.basic?.name || task.data?.review?.file?.title || "未命名",
+    title: task.data?.basic?.name || task.data?.review?.file?.title || (task.flow === "review" ? "评审技术文件" : "起草技术文件"),
     updatedAt: task.updatedAt,
     createdAt: task.createdAt,
     stepName: stepsOf(task.flow)[task.maxStep - 1] ?? "已完成",
@@ -152,7 +170,7 @@ function isPending(task) {
   const reached = task.maxStep ?? task.step;
   if (task.flow === "review") {
     const issues = d.review?.issues ?? [];
-    return reached >= 4 && issues.some((item) => !item.decision);
+    return reached >= 3 && issues.some((item) => !item.decision);
   }
   if (task.flow === "draft") {
     return reached === 6 && d.draft?.ready === true && d.draft?.confirmed !== true;
@@ -192,13 +210,13 @@ export async function createTask(flow) {
     flow,
     step: 1,
     maxStep: 1,
-    stepsVersion: flow === "draft" ? 2 : undefined,
+    stepsVersion: flow === "draft" ? 2 : flow === "review" ? 3 : undefined,
     status: "active",
     artifacts: [],
     createdAt: stamp(),
     updatedAt: stamp(),
     data: {
-      basic: { name: "", type: flow === "review" ? "需求规范" : "需求规范", classification: "L2 重要/秘密", number: "" },
+      basic: { name: flow === "review" ? "评审技术文件" : "起草技术文件", type: "需求规范", classification: "L2 重要/秘密", number: "" },
       attrs: { tier: "T0 飞机级", board: "总体", archive: "feishu", project: "" },
       sources: [],
       outline: { chapters: [], confirmed: false },
@@ -282,18 +300,24 @@ export function evaluateGate(flow, step, task) {
     return;
   }
 
-  if (step === 1) need(d.review?.confirmed === true, "Q1：请先确认开始");
-  if (step === 2) {
-    need(String(d.review?.type ?? "").trim(), "Q2：请选择评审类型");
-    need(String(d.review?.checklist ?? "").trim(), "Q2：请选择评审单");
+  if (step === 1) {
+    need(String(d.review?.type ?? "").trim(), "Q1：请选择评审类型");
+    need(String(d.review?.checklist ?? "").trim(), "Q1：请选择评审单");
+    const expected = {
+      需求规范: "需求规范评审单 v1（28 项）",
+      技术方案: "技术方案评审单 v2（32 项）",
+      安全性文件: "安全性文件评审单 v1（24 项）",
+      审定计划: "审定计划评审单 v1（39 项）",
+    }[d.review?.type];
+    need(!expected || d.review?.checklist === expected, "Q1：评审单与评审类型不一致");
   }
-  if (step === 3) need(d.review?.file?.ok === true, "Q3：受审文件尚未解析成功");
-  if (step === 4) need((d.review?.issues ?? []).length > 0, "Q4：预审尚未产出意见");
-  if (step === 5) {
+  if (step === 2) need(d.review?.file?.ok === true, "Q2：受审文件尚未解析成功");
+  if (step === 3) need((d.review?.issues ?? []).length > 0, "Q3：预审尚未产出意见");
+  if (step === 4) {
     const undecided = (d.review?.issues ?? []).filter((item) => !item.decision);
     const skipped = d.review?.skipped === true;
-    need(skipped || undecided.length === 0, `Q5：还有 ${undecided.length} 条意见未处置（采纳 / 驳回 / 改写）`);
-    need(d.review?.archived === true, "Q5：意见书尚未存档");
+    need(skipped || undecided.length === 0, `Q4：还有 ${undecided.length} 条意见未处置（采纳 / 驳回 / 改写）`);
+    need(d.review?.archived === true, "Q4：意见书尚未存档");
   }
 }
 
