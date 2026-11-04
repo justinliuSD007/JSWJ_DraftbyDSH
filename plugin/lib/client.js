@@ -36,6 +36,18 @@ window.__ModuleLoader__.load({
     const BRAND_ALT = "#A64A97";
     const GRADIENT = "linear-gradient(50deg, #3B3FB6 0%, #A64A97 100%)";
     const FONT = '"HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+
+// 界面字体随插件一起加载，不要求目标电脑预装；Word 出稿本身不依赖该字体。
+if (typeof document !== "undefined" && !document.getElementById("jswj-font-face")) {
+  const style = document.createElement("style");
+  style.id = "jswj-font-face";
+  style.textContent = [
+    '@font-face{font-family:"HarmonyOS Sans SC";src:url("/api/jswj-font/regular") format("truetype");font-weight:400;font-style:normal;font-display:swap}',
+    '@font-face{font-family:"HarmonyOS Sans SC";src:url("/api/jswj-font/medium") format("truetype");font-weight:500 600;font-style:normal;font-display:swap}',
+    '@font-face{font-family:"HarmonyOS Sans SC";src:url("/api/jswj-font/bold") format("truetype");font-weight:650 900;font-style:normal;font-display:swap}',
+  ].join("");
+  document.head.appendChild(style);
+}
     // 主按钮固定品牌紫：部分主题里 --dsw-alias-brand-primary 是白色，不能作为填充色。
     const PRIMARY = BRAND;
     const PANEL_MS = 240;
@@ -3157,23 +3169,6 @@ window.__ModuleLoader__.load({
                 onChange: (event) => setQuery(event.target.value),
               }),
             ),
-            !font.loading && !font.installed
-              ? h(
-                  "div",
-                  { style: s.envBar },
-                  h("span", { style: s.envLabel }, "字体 HarmonyOS Sans SC"),
-                  h("span", { style: { color: C.warn } }, font.supported === false ? "需手动安装" : "未安装"),
-                  font.supported !== false
-                    ? h("button", { style: s.btnSmall, disabled: busy, onClick: installFont }, "安装字体")
-                    : null,
-                  font.supported === false
-                    ? h("span", { style: s.envHint }, "macOS 请双击 ttf 安装到字体册")
-                    : null,
-                  font.sourceAvailable === false
-                    ? h("span", { style: s.envHint }, "未找到字体目录，可把 ttf 放到桌面「鸿蒙字体（对外仅可用该字体）」")
-                    : null,
-                )
-              : null,
             notice ? h("div", { style: { color: C.ok, fontSize: 12.5, marginBottom: 8 } }, notice) : null,
             h(
               "div",

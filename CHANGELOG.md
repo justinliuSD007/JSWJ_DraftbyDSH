@@ -1,5 +1,22 @@
 # 变更记录
 
+## 0.7.0-beta.13 — 2026-11-04
+
+第十三版测试发布。界面字体随插件加载，不再要求目标电脑预装鸿蒙字体。
+
+### 变更
+
+- 插件内置 HarmonyOS Sans SC Regular / Medium / Bold 三个字重，通过本地字体路由以 webfont 加载。
+- 界面显示与原来一致，不依赖系统已安装字体，也不再显示“字体未安装”。
+- 安装器体积增至约 15 MB；Word 出稿本身仍不依赖该字体。
+- 保留字体许可证 `fonts/LICENSE.txt`。
+
+### 发布资产
+
+- `JSWJ-Draft-Setup-0.7.0-beta.13.exe`（外部版）
+- `JSWJ-Draft-Setup-0.7.0-beta.13-internal.exe`（内部版）
+- `jswj-draft-plugin-0.7.0-beta.13.zip`
+
 ## 0.7.0-beta.12 — 2026-11-04
 
 第十二版测试发布。安装器和安装程序图标改为 GOVY 品牌标。

@@ -2466,6 +2466,41 @@ function apply(ctx, config = {}) {
     ctx.effect(
       () =>
         webServer.register({
+          kind: "prefix",
+          path: "/api/jswj-font",
+          handler: async (req, res) => {
+            const files = {
+              regular: "HarmonyOS_Sans_SC_Regular.ttf",
+              medium: "HarmonyOS_Sans_SC_Medium.ttf",
+              bold: "HarmonyOS_Sans_SC_Bold.ttf",
+            };
+            const pathname = String(req.url || "").split("?")[0];
+            const key = pathname.slice(pathname.indexOf("/api/jswj-font/") + "/api/jswj-font/".length);
+            const file = files[key];
+            if (!file) {
+              res.statusCode = 404;
+              res.end("not found");
+              return;
+            }
+            try {
+              const data = await readFile(packageFile(`fonts/${file}`));
+              res.setHeader("Content-Type", "font/ttf");
+              res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+              res.end(data);
+            } catch {
+              res.statusCode = 404;
+              res.end("not found");
+            }
+          },
+        }),
+      "jswj: bundled UI font route",
+    );
+  }
+
+  if (webServer) {
+    ctx.effect(
+      () =>
+        webServer.register({
           kind: "exact",
           path: "/api/jswj",
           handler: (req, res) => handleJswjRequest(req, res, { ctx, webServer, cfg }),
