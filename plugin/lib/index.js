@@ -1006,12 +1006,6 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         }
         break;
       }
-      case "font.status":
-        value = await fontStatus(cfg);
-        break;
-      case "font.install":
-        value = await installHarmonyFont(cfg);
-        break;
       case "wiki.list": {
         const listArgs = {};
         if (body.parent !== undefined && body.parent !== null && body.parent !== "") listArgs.parent = String(body.parent);

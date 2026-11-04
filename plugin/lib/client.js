@@ -2575,7 +2575,6 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
       const [busy, setBusy] = React.useState(false);
       const [error, setError] = React.useState("");
       const [notice, setNotice] = React.useState("");
-      const [font, setFont] = React.useState({ loading: true });
       const [confirmId, setConfirmId] = React.useState("");
       const [listFilter, setListFilter] = React.useState("all");
       const [query, setQuery] = React.useState("");
@@ -2652,9 +2651,6 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
 
       React.useEffect(() => {
         loadTasks();
-        call("font.status")
-          .then((status) => setFont({ ...status, loading: false }))
-          .catch(() => setFont({ loading: false, installed: false, sourceAvailable: false }));
         call("health.check")
           .then((result) => setHealth({ ...result, loading: false }))
           .catch((err) => setHealth({ loading: false, ok: false, issues: [String((err && err.message) || err)], warnings: [] }));
@@ -2874,14 +2870,6 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
         } catch (err) {
           setError("复制失败：" + String((err && err.message) || err));
         }
-      };
-
-      const installFont = async () => {
-        await run(async () => {
-          const result = await call("font.install");
-          setFont({ ...result, loading: false, sourceAvailable: true });
-          setNotice(result.restartRequired ? "字体已安装，请重启 DSH 后生效。" : "字体已安装。");
-        });
       };
 
       const checkHealth = async () => {
