@@ -2888,10 +2888,15 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
         });
       };
 
-      const downloadUpdate = async () => {
+      const applyUpdate = async () => {
         await run(async () => {
-          const result = await call("update.download", { version: updateInfo?.latest || "" });
-          setNotice(`更新包已下载到 ${result.path}；请用插件管理覆盖安装后重载 DSH。`);
+          const result = await call("update.apply");
+          if (!result.updated) {
+            setNotice(`已是最新版本 v${result.version}`);
+            return;
+          }
+          setUpdateInfo(await call("update.check"));
+          setNotice(`已更新到 v${result.version}；请重载插件或重启 DSH 后生效。备份：${result.backup}`);
         });
       };
 

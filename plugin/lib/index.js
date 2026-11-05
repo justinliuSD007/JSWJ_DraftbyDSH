@@ -221,16 +221,23 @@ async function scanRuntimePythons() {
 
 async function pickPython(cfg) {
   const tried = [];
+  const existing = [];
   const absolute = pythonCandidates(cfg);
   for (const candidate of absolute) {
     try {
       const info = await stat(candidate);
-      if (info.isFile()) return candidate;
+      if (!info.isFile()) continue;
+      existing.push(candidate);
+      if (await pythonHasDocx(candidate)) return candidate;
     } catch {
       tried.push(candidate);
     }
   }
-  for (const candidate of await scanRuntimePythons()) return candidate;
+  for (const candidate of await scanRuntimePythons()) {
+    existing.push(candidate);
+    if (await pythonHasDocx(candidate)) return candidate;
+  }
+  if (existing.length) return existing[0];
   const names = process.platform === "win32" ? ["python.exe", "python3.exe", "py.exe"] : ["python3", "python"];
   for (const command of names) {
     if (await commandExists(command)) return command;
@@ -240,6 +247,57 @@ async function pickPython(cfg) {
     "找不到可用的 Python 3。docx 解析依赖 Python 与 python-docx。已尝试：" +
       tried.join("；") +
       "。请在插件配置中填写 pythonPath 指向可用的 python.exe。",
+  );
+}
+
+const pythonDocxState = new Map();
+
+async function pythonHasDocx(python) {
+  if (pythonDocxState.has(python)) return pythonDocxState.get(python);
+  let ok = false;
+  try {
+    await execFileAsync(python, ["-c", "import docx"], { timeout: 15000, encoding: "utf8" });
+    ok = true;
+  } catch {
+    ok = false;
+  }
+  pythonDocxState.set(python, ok);
+  return ok;
+}
+
+/** 目标机没有 python-docx 时自动补装，避免只报 ModuleNotFoundError。 */
+async function ensurePythonDocx(cfg, python) {
+  if (await pythonHasDocx(python)) return python;
+  const attempts = [
+    ["-m", "pip", "install", "--user", "--disable-pip-version-check", "python-docx"],
+    ["-m", "pip", "install", "--disable-pip-version-check", "python-docx"],
+  ];
+  let last = "";
+  for (const pipArgs of attempts) {
+    try {
+      await execFileAsync(python, pipArgs, { timeout: 180000, maxBuffer: 8 * 1024 * 1024, encoding: "utf8" });
+      pythonDocxState.delete(python);
+      if (await pythonHasDocx(python)) return python;
+    } catch (error) {
+      last = String((error && error.stderr) || (error && error.message) || "").trim();
+    }
+  }
+  try {
+    await execFileAsync(python, ["-m", "ensurepip", "--user"], { timeout: 120000, encoding: "utf8" });
+    await execFileAsync(python, ["-m", "pip", "install", "--user", "--disable-pip-version-check", "python-docx"], {
+      timeout: 180000,
+      maxBuffer: 8 * 1024 * 1024,
+      encoding: "utf8",
+    });
+    pythonDocxState.delete(python);
+    if (await pythonHasDocx(python)) return python;
+  } catch (error) {
+    last = String((error && error.stderr) || (error && error.message) || last).trim();
+  }
+  fail(
+    "解析 docx 需要 python-docx，但当前 Python 没有该模块，自动安装也失败了。请在命令行执行：" +
+      `"${python}" -m pip install python-docx` +
+      (last ? `。错误：${last.split(/\r?\n/).slice(-2).join(" ")}` : ""),
   );
 }
 
@@ -406,7 +464,7 @@ async function extractSourceText(cfg, filePath, ext, imagesDir = "") {
     return { text: await readFile(filePath, "utf8"), images: [], figures: [] };
   }
   if (ext === ".docx") {
-    const python = await pickPython(cfg);
+    const python = await ensurePythonDocx(cfg, await pickPython(cfg));
     const script = packageFile("python/extract_text.py");
     const args = [script, "--file", filePath];
     if (imagesDir) args.push("--images-dir", imagesDir);
@@ -849,6 +907,9 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         break;
       case "update.download":
         value = await downloadUpdate(cfg, String(body.version ?? ""));
+        break;
+      case "update.apply":
+        value = await applyUpdate(cfg);
         break;
       case "summary.sync": {
         const task = await getTask(String(body.id ?? ""));
@@ -1355,19 +1416,41 @@ async function ensureBundledSkill() {
 }
 
 function parseVersion(value) {
-  return String(value ?? "")
-    .replace(/^v/i, "")
-    .split(/[.+-]/)
+  const text = String(value ?? "").replace(/^v/i, "").trim();
+  const [core, pre = ""] = text.split("-", 2);
+  const nums = core
+    .split(".")
     .slice(0, 3)
     .map((part) => Number.parseInt(part, 10) || 0);
+  const preParts = pre
+    ? pre.split(".").map((part) => (/^\d+$/.test(part) ? Number(part) : part))
+    : [];
+  return { nums, pre: preParts };
 }
 
 function isNewerVersion(latest, current) {
   const a = parseVersion(latest);
   const b = parseVersion(current);
   for (let i = 0; i < 3; i += 1) {
-    if (a[i] > b[i]) return true;
-    if (a[i] < b[i]) return false;
+    if (a.nums[i] > b.nums[i]) return true;
+    if (a.nums[i] < b.nums[i]) return false;
+  }
+  if (!a.pre.length && !b.pre.length) return false;
+  if (!a.pre.length) return true;
+  if (!b.pre.length) return false;
+  const length = Math.max(a.pre.length, b.pre.length);
+  for (let i = 0; i < length; i += 1) {
+    const x = a.pre[i];
+    const y = b.pre[i];
+    if (x === undefined) return false;
+    if (y === undefined) return true;
+    if (x === y) continue;
+    const xNum = typeof x === "number";
+    const yNum = typeof y === "number";
+    if (xNum && yNum) return x > y;
+    if (xNum) return false;
+    if (yNum) return true;
+    return String(x).localeCompare(String(y)) > 0;
   }
   return false;
 }
@@ -1391,7 +1474,15 @@ async function checkUpdate(cfg) {
 
   let release = null;
   try {
-    release = await githubJson(cfg, `${base}/releases/latest`);
+    const releases = await githubJson(cfg, `${base}/releases?per_page=30`);
+    const usable = (Array.isArray(releases) ? releases : []).filter(
+      (item) =>
+        item &&
+        !item.draft &&
+        (item.assets ?? []).some((asset) => /\.zip$/i.test(asset.name) && /jswj-draft/i.test(asset.name)),
+    );
+    usable.sort((a, b) => (isNewerVersion(a.tag_name, b.tag_name) ? -1 : isNewerVersion(b.tag_name, a.tag_name) ? 1 : 0));
+    release = usable[0] ?? null;
   } catch {
     release = null;
   }
@@ -1432,7 +1523,8 @@ async function downloadUpdate(cfg, version) {
   if (!info.hasUpdate) throw new Error("当前已经是最新版本");
   const headers = { "User-Agent": "JSWJ-DraftbyDSH" };
   if (cfg.githubToken) headers.Authorization = `Bearer ${cfg.githubToken}`;
-  const url = info.asset?.url || `https://api.github.com/repos/${cfg.updateOwner || "justinliuSD007"}/${cfg.updateRepo || "JSWJ_DraftbyDSH"}/zipball`;
+  if (!info.asset) throw new Error("最新版本没有可用的插件 zip，请到 Release 页面手动下载安装");
+  const url = info.asset.url;
   const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`);
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -1441,6 +1533,46 @@ async function downloadUpdate(cfg, version) {
   const file = join(dir, info.asset?.name || `jswj-draft-${version || info.latest}.zip`);
   await writeFile(file, buffer);
   return { ok: true, path: file, version: info.latest, url: info.url, size: buffer.length };
+}
+
+function psQuote(value) {
+  return "'" + String(value).replace(/'/g, "''") + "'";
+}
+
+async function extractZip(zipPath, dest) {
+  await rm(dest, { recursive: true, force: true });
+  await mkdir(dest, { recursive: true });
+  const script = `Expand-Archive -LiteralPath ${psQuote(zipPath)} -DestinationPath ${psQuote(dest)} -Force`;
+  await execFileAsync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    timeout: 180000,
+    maxBuffer: 8 * 1024 * 1024,
+    encoding: "utf8",
+  });
+}
+
+/** 下载并覆盖当前插件目录；配置在 profile 里，不会被覆盖。 */
+async function applyUpdate(cfg) {
+  const info = await checkUpdate(cfg);
+  if (!info.ok) throw new Error(info.error || "检查更新失败");
+  if (!info.hasUpdate) return { updated: false, version: info.current, restartRequired: false };
+  const downloaded = await downloadUpdate(cfg, info.latest);
+  const unpack = join(homedir(), ".dsh", "jswj-updates", `unpack-${Date.now()}`);
+  await extractZip(downloaded.path, unpack);
+  const pkg = JSON.parse(await readFile(join(unpack, "package.json"), "utf8"));
+  if (!pkg.version) throw new Error("更新包缺少 package.json version");
+  if (!isNewerVersion(pkg.version, info.current)) throw new Error("更新包版本不高于当前版本");
+  if (!(await stat(join(unpack, "lib", "index.js"))).isFile()) throw new Error("更新包缺少 lib/index.js");
+  const target = fileURLToPath(new URL("../", import.meta.url));
+  const backup = join(homedir(), ".dsh", "jswj-updates", `backup-${info.current}-${Date.now()}`);
+  const script =
+    `Copy-Item -LiteralPath ${psQuote(target)} -Destination ${psQuote(backup)} -Recurse -Force; ` +
+    `Copy-Item -Path ${psQuote(join(unpack, "*"))} -Destination ${psQuote(target)} -Recurse -Force`;
+  await execFileAsync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    timeout: 180000,
+    maxBuffer: 8 * 1024 * 1024,
+    encoding: "utf8",
+  });
+  return { updated: true, version: pkg.version, backup, restartRequired: true };
 }
 
 function healthFix(problem) {
@@ -2036,7 +2168,7 @@ function apply(ctx, config = {}) {
           fail(`模板缺失：${template}`);
         }
 
-        const python = await pickPython(cfg);
+        const python = await ensurePythonDocx(cfg, await pickPython(cfg));
         const script = packageFile("python/render_docx.py");
         const outDir = cfg.outputDir || join(homedir(), ".dsh", "jswj-out");
         await mkdir(outDir, { recursive: true });
