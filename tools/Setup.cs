@@ -720,6 +720,7 @@ namespace JswjSetup
         private static readonly Color RunningColor = Color.FromArgb(51, 112, 255);
         private static readonly Color DoneColor = Color.FromArgb(52, 168, 83);
         private static readonly Color FailedColor = Color.FromArgb(245, 63, 63);
+        private static readonly Color WarningColor = Color.FromArgb(199, 120, 0);
         private static readonly Color HintColor = Color.FromArgb(100, 106, 115);
         private static readonly Color DescColor = Color.FromArgb(140, 146, 155);
         private static readonly Color SoftColor = Color.FromArgb(178, 184, 192);
@@ -768,8 +769,8 @@ namespace JswjSetup
         public InstallForm()
         {
             Text = "技术文件助手 · 安装程序";
-            ClientSize = new Size(620, 640);
-            MinimumSize = new Size(640, 560);
+            ClientSize = new Size(620, 700);
+            MinimumSize = new Size(640, 640);
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = true;
             MinimizeBox = false;
@@ -778,7 +779,7 @@ namespace JswjSetup
             FormClosing += OnFormClosing;
 
             // 先搭安装页（尺寸按 620×640 定），再把确认页盖在上面，最后由 ShowInstallPage 切回来。
-            _installPage.SetBounds(0, 0, 620, 640);
+            _installPage.SetBounds(0, 0, 620, 700);
             _installPage.Visible = false;
             Controls.Add(_installPage);
 
@@ -1132,10 +1133,10 @@ namespace JswjSetup
         private void ShowInstallPage()
         {
             _precheckPage.Visible = false;
-            _installPage.SetBounds(0, 0, 620, 640);
+            _installPage.SetBounds(0, 0, 620, 700);
             _installPage.Visible = true;
-            MinimumSize = new Size(640, 560);
-            ClientSize = new Size(620, 640);
+            MinimumSize = new Size(640, 640);
+            ClientSize = new Size(620, 700);
             _install.Focus();
         }
 
@@ -1505,6 +1506,11 @@ namespace JswjSetup
                 _cancel.Enabled = true;
                 _cancel.Text = "关闭";
                 _compLibre.Enabled = true;
+                bool libreWarning = failed.Count > 0;
+                foreach (var item in failed)
+                {
+                    if (item != StepTitles[StepLibre]) libreWarning = false;
+                }
 
                 if (cancelled)
                 {
@@ -1520,18 +1526,25 @@ namespace JswjSetup
                     MessageBox.Show(this, "安装包检查未通过，请确认安装程序与插件文件在同一目录。", "未完成",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
-                else if (failed.Count > 0)
+                else if (failed.Count > 0 && !libreWarning)
                 {
                     _status.Text = "以下组件未完成：" + string.Join("、", failed.ToArray());
                     _status.ForeColor = FailedColor;
-                    MessageBox.Show(this, "安装未完成。未完成的组件与原因见列表中红色行。", "未完成",
+                    MessageBox.Show(this, "安装未完成。未完成的组件及原因见日志中红色行。", "未完成",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else if (libreWarning)
+                {
+                    _status.Text = "插件安装完成；LibreOffice 未安装，不影响出稿，可稍后单独安装。";
+                    _status.ForeColor = WarningColor;
+                    MessageBox.Show(this, "插件安装完成。LibreOffice 组件未安装，不影响出稿；需要 Word 转分页图片时再单独安装。",
+                        "安装完成（可选组件未装）", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
-                    _status.Text = "安装完成，请重新打开 DSH。";
+                    _status.Text = "安装完成，请重新启动 DSH。";
                     _status.ForeColor = DoneColor;
-                    MessageBox.Show(this, "安装完成。请重新打开 DSH。", "完成",
+                    MessageBox.Show(this, "安装完成。请重新启动 DSH。", "完成",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             });
