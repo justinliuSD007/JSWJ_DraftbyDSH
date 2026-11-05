@@ -5,7 +5,7 @@ description: 执行「技术文件助手（JSWJ_DraftbyDSH）」的技术文件�
 
 # 技术文件助手（JSWJ_DraftbyDSH）
 
-技术文件助手（JSWJ_DraftbyDSH），以下简称本插件。两条业务流共用一个知识空间：业务流 1 创建技术文档（7 步），业务流 2 技术资料 AI 预审（5 步）。
+技术文件助手（JSWJ_DraftbyDSH），以下简称本插件。两条业务流共用一个知识空间：业务流 1 创建技术文档（7 步），业务流 2 技术资料 AI 预审（4 步）。
 每一步先满足门禁再进入下一步，不得跳步。出稿一律走「渲染 Word → 发布知识库」，不得用纯文本冒充正式文件。
 
 ## 核心原则：模板是底座
@@ -37,6 +37,15 @@ description: 执行「技术文件助手（JSWJ_DraftbyDSH）」的技术文件�
 | `jswj_publish_docx` | .docx 上传并移入知识库 | `filePath`、`parent?`、`name?` |
 | `jswj_task_get` | 读取页面任务状态 | `taskId` |
 | `jswj_task_update` | 把生成/自检/预审/修订结果写回任务 | `taskId`、`patch`（JSON 字符串） |
+
+## 文档批注与 PDF 依赖
+
+- Word 批注使用 `python-docx>=1.2.0`。插件检测不到 `Document.add_comment` 时会自动执行 `pip install --user "python-docx>=1.2.0"`。
+- PDF 解析和批注使用 PyMuPDF。首次处理 PDF 时会自动执行 `pip install --user pymupdf`。
+- 自动安装失败时，让用户手动执行：
+  - `python -m pip install --user "python-docx>=1.2.0"`
+  - `python -m pip install --user pymupdf`
+- 生成批注版时只写副本，不修改原文件；飞书云 PDF 不能原地评论，只能下载后生成带批注副本。
 
 ## 页面任务（分步向导）
 

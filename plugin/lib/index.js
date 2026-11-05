@@ -256,7 +256,7 @@ async function pythonHasDocx(python) {
   if (pythonDocxState.has(python)) return pythonDocxState.get(python);
   let ok = false;
   try {
-    await execFileAsync(python, ["-c", "import docx"], { timeout: 15000, encoding: "utf8" });
+    await execFileAsync(python, ["-c", "import docx; from docx import Document; assert hasattr(Document, \"add_comment\")"], { timeout: 15000, encoding: "utf8" });
     ok = true;
   } catch {
     ok = false;
@@ -269,8 +269,8 @@ async function pythonHasDocx(python) {
 async function ensurePythonDocx(cfg, python) {
   if (await pythonHasDocx(python)) return python;
   const attempts = [
-    ["-m", "pip", "install", "--user", "--disable-pip-version-check", "python-docx"],
-    ["-m", "pip", "install", "--disable-pip-version-check", "python-docx"],
+    ["-m", "pip", "install", "--user", "--disable-pip-version-check", "python-docx>=1.2.0"],
+    ["-m", "pip", "install", "--disable-pip-version-check", "python-docx>=1.2.0"],
   ];
   let last = "";
   for (const pipArgs of attempts) {
@@ -284,7 +284,7 @@ async function ensurePythonDocx(cfg, python) {
   }
   try {
     await execFileAsync(python, ["-m", "ensurepip", "--user"], { timeout: 120000, encoding: "utf8" });
-    await execFileAsync(python, ["-m", "pip", "install", "--user", "--disable-pip-version-check", "python-docx"], {
+    await execFileAsync(python, ["-m", "pip", "install", "--user", "--disable-pip-version-check", "python-docx>=1.2.0"], {
       timeout: 180000,
       maxBuffer: 8 * 1024 * 1024,
       encoding: "utf8",
@@ -297,6 +297,38 @@ async function ensurePythonDocx(cfg, python) {
   fail(
     "解析 docx 需要 python-docx，但当前 Python 没有该模块，自动安装也失败了。请在命令行执行：" +
       `"${python}" -m pip install python-docx` +
+      (last ? `。错误：${last.split(/\r?\n/).slice(-2).join(" ")}` : ""),
+  );
+}
+
+const pythonPdfState = new Map();
+
+async function ensurePythonPdf(cfg, python) {
+  if (pythonPdfState.get(python) === true) return python;
+  try {
+    await execFileAsync(python, ["-c", "import fitz"], { timeout: 15000, encoding: "utf8" });
+    pythonPdfState.set(python, true);
+    return python;
+  } catch {
+    /* 继续安装 */
+  }
+  let last = "";
+  for (const pipArgs of [
+    ["-m", "pip", "install", "--user", "--disable-pip-version-check", "pymupdf"],
+    ["-m", "pip", "install", "--disable-pip-version-check", "pymupdf"],
+  ]) {
+    try {
+      await execFileAsync(python, pipArgs, { timeout: 240000, maxBuffer: 8 * 1024 * 1024, encoding: "utf8" });
+      await execFileAsync(python, ["-c", "import fitz"], { timeout: 15000, encoding: "utf8" });
+      pythonPdfState.set(python, true);
+      return python;
+    } catch (error) {
+      last = String((error && error.stderr) || (error && error.message) || "").trim();
+    }
+  }
+  fail(
+    "处理 PDF 需要 PyMuPDF，但当前 Python 没有该模块，自动安装也失败了。请在命令行执行：" +
+      `"${python}" -m pip install pymupdf` +
       (last ? `。错误：${last.split(/\r?\n/).slice(-2).join(" ")}` : ""),
   );
 }
@@ -513,7 +545,27 @@ async function extractSourceText(cfg, filePath, ext, imagesDir = "") {
       fail("docx 解析失败：返回结果无法解析");
     }
   }
-  fail(`暂不支持 ${ext}，请上传 .docx、.md、.markdown 或 .txt`);
+  if (ext === ".pdf") {
+    const python = await ensurePythonPdf(cfg, await pickPython(cfg));
+    const script = packageFile("python/extract_pdf.py");
+    let stdout;
+    try {
+      ({ stdout } = await execFileAsync(python, [script, "--file", filePath], {
+        timeout: 180000,
+        maxBuffer: 16 * 1024 * 1024,
+        encoding: "utf8",
+        env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+      }));
+    } catch (error) {
+      const detail = String((error && error.stderr) || "").trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" ");
+      fail(`PDF 解析失败：${detail || (error && error.message) || "无输出"}`);
+    }
+    const line = stdout.split(/\r?\n/).reverse().find((item) => item.startsWith("JSWJ_TEXT "));
+    if (!line) fail("PDF 解析失败：解析器没有返回文本");
+    const parsed = JSON.parse(line.slice("JSWJ_TEXT ".length));
+    return { text: parsed.text ?? "", images: [], figures: [] };
+  }
+  fail(`暂不支持 ${ext}，请上传 .docx、.pdf、.md、.markdown 或 .txt`);
 }
 
 const TITLE_ALIASES = {
@@ -966,8 +1018,8 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
       case "source.upload": {
         const name = String(body.name ?? "上传资料").trim();
         const ext = extname(name).toLowerCase();
-        if (![".docx", ".md", ".markdown", ".txt"].includes(ext)) {
-          throw new Error("只支持 .docx / .md / .markdown / .txt");
+        if (![".docx", ".pdf", ".md", ".markdown", ".txt"].includes(ext)) {
+          throw new Error("只支持 .docx / .pdf / .md / .markdown / .txt");
         }
         const raw = String(body.dataBase64 ?? "");
         if (!raw) throw new Error("缺少文件内容");
@@ -985,9 +1037,9 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
           const text = parsed.text;
           const textPath = join(dir, `${safeName(name, "资料")}.txt`);
           await writeFile(textPath, text, "utf8");
-          if (ext === ".docx" && body.noStore) {
+          if ((ext === ".docx" || ext === ".pdf") && body.noStore) {
             // 只有受审文件（noStore）才留存原件与图题注；参考资料上传不会覆盖它们。
-            await writeFile(join(dir, "source.docx"), buffer);
+            await writeFile(join(dir, `source${ext}`), buffer);
             await writeFile(join(dir, "figures.json"), JSON.stringify(parsed.figures || [], null, 2), "utf8");
           }
 
@@ -1073,6 +1125,9 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
         value = await tool("jswj_wiki_list").execute(listArgs, {});
         break;
       }
+      case "review.deliver":
+        value = await deliverReview(cfg, body);
+        break;
       case "review.publish": {
         const markdown = String(body.markdown ?? "").trim();
         const title = String(body.title ?? "").trim();
@@ -1574,6 +1629,181 @@ async function applyUpdate(cfg) {
     encoding: "utf8",
   });
   return { updated: true, version: pkg.version, backup, restartRequired: true };
+}
+
+function reviewIssueText(item, index, total) {
+  return [
+    total > 1 ? `【预审意见 ${index}】` : "",
+    `${item.severity || "建议"}｜${item.location || "未标注位置"}`,
+    `问题：${item.problem || ""}`,
+    `意见依据：${item.basis || "缺依据"}`,
+    `建议修订方式：${item.suggestion || "-"}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function reviewBlockText(block) {
+  const keys = ["text", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6", "heading7", "heading8", "heading9", "bullet", "ordered", "quote", "code", "todo"];
+  for (const key of keys) {
+    const node = block && block[key];
+    if (node && Array.isArray(node.elements)) {
+      return node.elements.map((el) => el.text_run?.content || "").join("");
+    }
+  }
+  return "";
+}
+
+async function reviewOutputNode(cfg) {
+  const outRoot = await ensureWikiChild(cfg, cfg.rootToken || "", "技术资料出稿库");
+  return ensureWikiChild(cfg, outRoot, "文件评审");
+}
+
+async function runAnnotateScript(cfg, scriptName, sourcePath, issues, outPath) {
+  const temp = join(homedir(), ".dsh", "jswj-updates", `issues-${Date.now()}.json`);
+  await mkdir(join(homedir(), ".dsh", "jswj-updates"), { recursive: true });
+  await writeFile(temp, JSON.stringify(issues, null, 2), "utf8");
+  const python = scriptName.includes("pdf") ? await ensurePythonPdf(cfg, await pickPython(cfg)) : await ensurePythonDocx(cfg, await pickPython(cfg));
+  const script = packageFile(`python/${scriptName}`);
+  await execFileAsync(python, [script, "--file", sourcePath, "--issues", temp, "--out", outPath], {
+    timeout: 180000,
+    maxBuffer: 16 * 1024 * 1024,
+    encoding: "utf8",
+    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+  });
+  return outPath;
+}
+
+async function deliverReview(cfg, body) {
+  const task = await getTask(String(body.id || ""));
+  const review = task.data?.review || {};
+  const issues = (Array.isArray(review.issues) ? review.issues : []).filter((item) => item.included !== false);
+  if (!issues.length) throw new Error("没有纳入预审的意见");
+  const sourcePath = join(homedir(), ".dsh", "jswj-sources", task.id);
+  const title = String(review.file?.title || task.data?.basic?.name || "技术文件").replace(/\.(docx?|pdf|md|markdown|txt)$/i, "");
+  const url = String(review.file?.url || "");
+  const outputNode = await reviewOutputNode(cfg);
+  const at = new Date().toISOString();
+  const saveReport = async (kind, reportUrl, nodeToken, extra = {}) => {
+    await patchTask(task.id, {
+      data: {
+        publish: { url: reportUrl, nodeToken: nodeToken || "", title, at },
+        review: { ...review, report: { kind, url: reportUrl, nodeToken: nodeToken || "", title, at, ...extra } },
+      },
+    });
+    return { ok: true, kind, url: reportUrl, nodeToken: nodeToken || "", title, at };
+  };
+
+  // 本地 Word / PDF 优先用保存的原件，原文件只读，输出副本。
+  const localDocx = join(sourcePath, "source.docx");
+  const localPdf = join(sourcePath, "source.pdf");
+  const hasDocx = await stat(localDocx).then((info) => info.isFile()).catch(() => false);
+  const hasPdf = await stat(localPdf).then((info) => info.isFile()).catch(() => false);
+  if (hasDocx) {
+    const out = join(sourcePath, `${safeName(title, "技术文件")}-预审批注版.docx`);
+    await runAnnotateScript(cfg, "annotate_docx.py", localDocx, issues, out);
+    const uploaded = await uploadFileToWiki(cfg, out, outputNode, `${safeName(title, "技术文件")}-预审批注版.docx`);
+    return saveReport("docx-comments", uploaded.url, uploaded.wikiToken);
+  }
+  if (hasPdf) {
+    const out = join(sourcePath, `${safeName(title, "技术文件")}-预审批注版.pdf`);
+    await runAnnotateScript(cfg, "annotate_pdf.py", localPdf, issues, out);
+    const uploaded = await uploadFileToWiki(cfg, out, outputNode, `${safeName(title, "技术文件")}-预审批注版.pdf`);
+    return saveReport("pdf-comments", uploaded.url, uploaded.wikiToken);
+  }
+
+  if (!url) throw new Error("找不到受审文件，无法生成批注版");
+
+  // 飞书 wiki / docx 链接：解析节点，docx 走原文评论，PDF 走下载后批注副本。
+  let sourceObjToken = "";
+  let sourceNodeToken = "";
+  let sourceType = "";
+  let sourceTitle = review.file?.title || "";
+  const wikiMatch = url.match(/\/wiki\/([A-Za-z0-9_-]+)/);
+  const docxMatch = url.match(/\/docx\/([A-Za-z0-9_-]+)/);
+  const fileMatch = url.match(/\/file\/([A-Za-z0-9_-]+)/);
+  if (wikiMatch) {
+    const node = await api(cfg, `/wiki/v2/spaces/get_node?token=${encodeURIComponent(wikiMatch[1])}`);
+    sourceObjToken = node.node?.obj_token || "";
+    sourceNodeToken = node.node?.node_token || wikiMatch[1];
+    sourceType = node.node?.obj_type || "";
+    sourceTitle = node.node?.title || sourceTitle;
+  } else if (docxMatch) {
+    sourceObjToken = docxMatch[1];
+    sourceType = "docx";
+  } else if (fileMatch) {
+    sourceObjToken = fileMatch[1];
+    sourceType = "file";
+  }
+  if (!sourceObjToken) throw new Error("无法解析飞书文件 token");
+
+  if (sourceType === "docx") {
+    const token = await getToken(cfg);
+    const blockRes = await fetch(`${API}/docx/v1/documents/${encodeURIComponent(sourceObjToken)}/blocks?page_size=500`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!blockRes.ok) throw new Error(`读取飞书文档失败：HTTP ${blockRes.status}`);
+    const blockData = await blockRes.json();
+    const blocks = (blockData.data?.items || []).map((block) => ({ id: block.block_id, text: reviewBlockText(block) }));
+    const grouped = new Map();
+    for (const item of issues) {
+      const quote = String(item.evidence?.quote || "").replace(/\s+/g, "").trim();
+      const location = String(item.location || "").replace(/\s+/g, "").trim();
+      let found = quote ? blocks.find((block) => block.text.replace(/\s+/g, "").includes(quote.slice(0, 80))) : null;
+      if (!found && location) found = blocks.find((block) => block.text.replace(/\s+/g, "").includes(location));
+      if (!found) found = blocks[0];
+      if (!found) continue;
+      const list = grouped.get(found.id) || [];
+      list.push(item);
+      grouped.set(found.id, list);
+    }
+    let count = 0;
+    for (const [blockId, items] of grouped) {
+      const content = items.map((item, index) => reviewIssueText(item, index + 1, items.length)).join("\n\n");
+      const res = await fetch(`${API}/drive/v1/files/${encodeURIComponent(sourceObjToken)}/comments?file_type=docx`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          reply_list: { replies: [{ content: { elements: [{ type: "text_run", text_run: { text: content } }] } }] },
+          anchor: { block_id: blockId },
+        }),
+      });
+      if (!res.ok) throw new Error(`添加飞书评论失败：HTTP ${res.status}`);
+      count += 1;
+    }
+    let shortcutUrl = url;
+    let shortcutToken = "";
+    if (sourceNodeToken) {
+      const made = await api(cfg, `/wiki/v2/spaces/${spaceRoot(cfg)}/nodes`, {
+        method: "POST",
+        body: JSON.stringify({ obj_type: "docx", node_type: "shortcut", origin_node_token: sourceNodeToken, parent_node_token: outputNode, title: `${sourceTitle || title}-预审意见` }),
+      });
+      shortcutToken = made.node?.node_token || "";
+      const base = String(cfg.wikiBaseUrl || "https://govy.feishu.cn").replace(/\/$/, "");
+      if (shortcutToken) shortcutUrl = `${base}/wiki/${shortcutToken}`;
+    }
+    return saveReport("feishu-comments", shortcutUrl, shortcutToken, { comments: count, sourceUrl: url });
+  }
+
+  if (sourceType === "file") {
+    const buffer = await downloadDriveFile(cfg, sourceObjToken);
+    const tmp = join(sourcePath, `cloud-${Date.now()}.pdf`);
+    await mkdir(sourcePath, { recursive: true });
+    await writeFile(tmp, buffer);
+    const out = join(sourcePath, `${safeName(title, "技术文件")}-预审批注版.pdf`);
+    await runAnnotateScript(cfg, "annotate_pdf.py", tmp, issues, out);
+    const uploaded = await uploadFileToWiki(cfg, out, outputNode, `${safeName(title, "技术文件")}-预审批注版.pdf`);
+    let shortcutToken = "";
+    if (sourceNodeToken) {
+      const made = await api(cfg, `/wiki/v2/spaces/${spaceRoot(cfg)}/nodes`, {
+        method: "POST",
+        body: JSON.stringify({ obj_type: "file", node_type: "shortcut", origin_node_token: sourceNodeToken, parent_node_token: outputNode, title: `${sourceTitle || title}-原文件` }),
+      });
+      shortcutToken = made.node?.node_token || "";
+    }
+    return saveReport("pdf-comments", uploaded.url, uploaded.wikiToken, { sourceUrl: url, shortcutToken });
+  }
+  throw new Error(`暂不支持该来源类型：${sourceType || "未知"}`);
 }
 
 function healthFix(problem) {

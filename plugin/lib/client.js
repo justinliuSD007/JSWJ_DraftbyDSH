@@ -3535,7 +3535,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                   "上传 docx / md",
                   h("input", {
                     type: "file",
-                    accept: ".docx,.md,.markdown,.txt",
+                    accept: ".docx,.pdf,.md,.markdown,.txt",
                     style: { display: "none" },
                     disabled: busy,
                     onChange: upload,
@@ -4218,14 +4218,33 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
               { style: s.field },
               h("label", { style: s.label }, "预审用途"),
               h(
-                "select",
-                {
-                  style: s.input,
-                  value: form.review.mode || "self",
-                  onChange: (e) => set({ review: { ...form.review, mode: e.target.value } }),
-                },
-                h("option", { value: "self" }, "自我检查并修订"),
-                h("option", { value: "handoff" }, "提交给编制人（只出预审报告）"),
+                "div",
+                { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 } },
+                [
+                  ["self", "自我检查并修订", "逐条处置意见，生成修订版后完成"],
+                  ["handoff", "出具预审报告", "整理意见，直接在原文加评论或输出报告"],
+                ].map(([value, title, desc]) =>
+                  h(
+                    "button",
+                    {
+                      key: value,
+                      type: "button",
+                      style: {
+                        textAlign: "left",
+                        padding: "11px 13px",
+                        borderRadius: 10,
+                        border: `1px solid ${(form.review.mode || "self") === value ? BRAND : BORDER_SOFT}`,
+                        background: (form.review.mode || "self") === value ? "rgba(59,63,182,0.06)" : C.layer1,
+                        color: C.text,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      },
+                      onClick: () => set({ review: { ...form.review, mode: value } }),
+                    },
+                    h("div", { style: { fontSize: 13, fontWeight: 650, marginBottom: 3 } }, title),
+                    h("div", { style: { fontSize: 11.5, color: C.sub, lineHeight: 1.5 } }, desc),
+                  ),
+                ),
               ),
             ),
             h(
@@ -4265,7 +4284,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                   )
                 : null,
 
-            h("div", { style: s.note }, "自我检查并修订：处置意见后生成修订版；提交给编制人：只生成预审报告，不要求逐条处置。预审只出待确认问题，不判定通过或不通过。"),
+            h("div", { style: s.note }, "自我检查并修订：处置意见后生成修订版；出具预审报告：只生成预审报告，不要求逐条处置。预审只出待确认问题，不判定通过或不通过。"),
             h(
               "div",
               { style: s.footer },
@@ -4298,7 +4317,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                 "上传文件",
                 h("input", {
                   type: "file",
-                  accept: ".docx,.md,.markdown,.txt",
+                  accept: ".docx,.pdf,.md,.markdown,.txt",
                   disabled: busy,
                   style: { display: "none" },
                   onChange: (event) => {
@@ -4346,7 +4365,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                 "上传参考资料",
                 h("input", {
                   type: "file",
-                  accept: ".docx,.md,.markdown,.txt",
+                  accept: ".docx,.pdf,.md,.markdown,.txt",
                   disabled: busy,
                   style: { display: "none" },
                   onChange: (event) => {
@@ -4557,7 +4576,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                 `**文件类型：**${typeText}`,
                 `**使用检查单：**${checklistText}`,
                 `**任务号：**${task.id}`,
-                `**评审用途：**${handoffMode ? "提交编制人" : "自我检查并修订"}`,
+                `**评审用途：**${handoffMode ? "出具预审报告" : "自我检查并修订"}`,
                 "",
                 "**意见汇总**",
                 `共 ${targetIssues.length} 条意见，其中严重 ${severe} 条、建议 ${suggestion} 条。`,
@@ -4583,9 +4602,33 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
             }
           });
         };
+        const deliver = async () => {
+          setOpinionBusy(true);
+          set({ publish: null });
+          try {
+            const result = await call("review.deliver", { id: task.id });
+            set({ publish: { url: result.url, at: result.at || new Date().toISOString() } });
+            setTask(await call("tasks.get", { id: task.id }));
+            const kindText =
+              result.kind === "feishu-comments"
+                ? "已在原文添加评论，并在出稿库建立快捷方式。"
+                : result.kind === "docx-comments"
+                  ? "已生成带批注的 Word 副本。"
+                  : "已生成带批注的 PDF 副本。";
+            setNotice(kindText);
+          } catch (err) {
+            setNotice(`批注版生成失败，已降级为预审报告：${String((err && err.message) || err)}`);
+            setOpinionBusy(false);
+            await archive();
+            return;
+          } finally {
+            setOpinionBusy(false);
+          }
+        };
         return h(
           "div",
           null,
+          h("div", { style: s.note }, handoffMode ? "当前：出具预审报告。勾选要纳入的意见，生成后在原文位置加评论，并在出稿库建立快捷方式。" : "当前：自我检查并修订。逐条处置意见后，交给助手按意见修订并输出修订版。"),
           h(
             "div",
             { style: s.footer },
@@ -4596,9 +4639,15 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
               handoffMode ? "保存整理" : "保存处置",
             ),
             handoffMode
+              ? h("button", { style: s.btnGhost, disabled: busy, onClick: () => set({ review: { ...form.review, issues: issues.map((it) => ({ ...it, included: true })) } }) }, "全选纳入")
+              : null,
+            handoffMode
+              ? h("button", { style: s.btnGhost, disabled: busy, onClick: () => set({ review: { ...form.review, issues: issues.map((it) => ({ ...it, included: false })) } }) }, "全部取消")
+              : null,
+            handoffMode
               ? h(
                   "button",
-                  { style: { ...s.btn, ...(busy || !includedIssues.length ? s.btnDisabled : {}) }, disabled: busy || !includedIssues.length, onClick: archive },
+                  { style: { ...s.btn, ...(busy || !includedIssues.length ? s.btnDisabled : {}) }, disabled: busy || !includedIssues.length, onClick: deliver },
                   opinionBusy ? "正在生成…" : "生成预审报告",
                 )
               : h("button", { style: s.btnSecondary, onClick: () => handoff(4, "如需协助修订，只改意见指出的位置。") }, sessionFor(4) ? "打开本步会话" : "交给助手协助修订"),
