@@ -745,7 +745,7 @@ namespace JswjSetup
         private readonly Installer _installer = new Installer();
 
         /** 两屏共用 */
-        private const string SubtitleText = "适用于 DeepSeek Harness 桌面端 · v0.7.0-beta.8";
+        private const string SubtitleText = "适用于 DeepSeek Harness 桌面端";
 
         // 两屏：安装前确认页 + 安装页，同一窗口内切换。
         private readonly Panel _installPage = new Panel();
@@ -769,6 +769,7 @@ namespace JswjSetup
         public InstallForm()
         {
             Text = "技术文件助手 · 安装程序";
+            AutoScaleMode = AutoScaleMode.None;
             ClientSize = new Size(620, 700);
             MinimumSize = new Size(640, 640);
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -783,26 +784,30 @@ namespace JswjSetup
             _installPage.Visible = false;
             Controls.Add(_installPage);
 
-            _precheckPage.SetBounds(0, 0, 620, 350);
+            _precheckPage.SetBounds(0, 0, 400, 460);
+            _precheckPage.AutoScroll = true;
+            _installPage.AutoScroll = true;
             Controls.Add(_precheckPage);
 
             int y = 16;
 
             var title = new Label();
-            title.Text = "技术文件助手 · 安装程序";
+            title.Text = "技术文件助手";
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
-            title.SetBounds(24, y, 572, 26);
+            title.AutoSize = false;
+            title.SetBounds(24, y, 572, 34);
             title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             _installPage.Controls.Add(title);
-            y += 28;
+            y += 40;
 
             var subtitle = new Label();
             subtitle.Text = SubtitleText;
             subtitle.ForeColor = HintColor;
-            subtitle.SetBounds(24, y, 572, 17);
+            subtitle.AutoSize = false;
+            subtitle.SetBounds(24, y, 572, 20);
             subtitle.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             _installPage.Controls.Add(subtitle);
-            y += 20;
+            y += 24;
 
             var note = new Label();
 #if BUNDLED
@@ -962,9 +967,23 @@ namespace JswjSetup
             Resize += OnPageResize;
             _installPage.Visible = false;
             _precheckPage.Visible = true;
-            MinimumSize = new Size(640, 390);
-            ClientSize = new Size(620, 350);
+            MinimumSize = new Size(490, 480);
+            ClientSize = new Size(400, 460);
             RefreshChecks();
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            SetWindowPos(Handle, IntPtr.Zero, 0, 0, 700, 500, 0x0002 | 0x0004);
+            var area = Screen.FromControl(this).WorkingArea;
+            if (Right > area.Right) Left = area.Right - Width - 8;
+            if (Bottom > area.Bottom) Top = area.Bottom - Height - 8;
+            if (Left < area.Left) Left = area.Left + 8;
+            if (Top < area.Top) Top = area.Top + 8;
         }
 
         /** 安装前确认页：三项检查 + 确认勾选 + 三个按钮。 */
@@ -973,27 +992,30 @@ namespace JswjSetup
             int y = 16;
 
             var title = new Label();
-            title.Text = "技术文件助手 · 安装程序";
+            title.Text = "技术文件助手";
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
-            title.SetBounds(24, y, 572, 26);
+            title.AutoSize = false;
+            title.SetBounds(20, y, 350, 34);
             _precheckPage.Controls.Add(title);
-            y += 28;
+            y += 48;
 
             var subtitle = new Label();
             subtitle.Text = SubtitleText;
             subtitle.ForeColor = HintColor;
-            subtitle.SetBounds(24, y, 572, 17);
+            subtitle.AutoSize = false;
+            subtitle.SetBounds(20, y, 350, 24);
             _precheckPage.Controls.Add(subtitle);
-            y += 26;
+            y += 32;
 
             var intro = new Label();
-            intro.Text = "安装前请确认以下事项。全部满足后点「下一步」继续。";
+            intro.Text = "安装前请确认以下事项。";
             intro.ForeColor = BodyColor;
-            intro.SetBounds(24, y, 572, 20);
+            intro.AutoSize = false;
+            intro.SetBounds(20, y, 350, 24);
             _precheckPage.Controls.Add(intro);
-            y += 34;
+            y += 40;
 
-            string[] names = { "已安装 DSH 并至少启动过一次", "DSH 当前未运行", "系统环境" };
+            string[] names = { "已安装并启动过 DSH", "DSH 当前未运行", "系统环境" };
             for (int i = 0; i < names.Length; i++)
             {
                 int rowTop = y + i * 46;
@@ -1009,7 +1031,7 @@ namespace JswjSetup
                 name.Text = names[i];
                 name.ForeColor = BodyColor;
                 name.AutoEllipsis = true;
-                name.SetBounds(48, rowTop, 350, 20);
+                name.SetBounds(44, rowTop, 190, 20);
                 _precheckPage.Controls.Add(name);
                 _checkName[i] = name;
 
@@ -1017,7 +1039,7 @@ namespace JswjSetup
                 result.Text = "";
                 result.TextAlign = ContentAlignment.MiddleRight;
                 result.AutoEllipsis = true;
-                result.SetBounds(404, rowTop, 192, 20);
+                result.SetBounds(238, rowTop, 140, 20);
                 _precheckPage.Controls.Add(result);
                 _checkResult[i] = result;
 
@@ -1026,20 +1048,20 @@ namespace JswjSetup
                 hint.Font = new Font("Microsoft YaHei UI", 8.25f);
                 hint.ForeColor = DescColor;
                 hint.AutoEllipsis = true;
-                hint.SetBounds(48, rowTop + 21, 548, 16);
+                hint.SetBounds(44, rowTop + 21, 330, 16);
                 _precheckPage.Controls.Add(hint);
                 _checkHint[i] = hint;
             }
             y += names.Length * 46;
 
-            _confirmBox.Text = "我已确认以上事项，并已退出 DSH";
-            _confirmBox.SetBounds(24, y, 572, 24);
+            _confirmBox.Text = "我已确认并退出 DSH";
+            _confirmBox.SetBounds(20, y, 350, 24);
             _confirmBox.CheckedChanged += delegate { UpdateNextEnabled(); };
             _precheckPage.Controls.Add(_confirmBox);
             y += 40;
 
             _recheck.Text = "重新检测";
-            _recheck.SetBounds(24, y, 96, 32);
+            _recheck.SetBounds(20, y, 80, 32);
             _recheck.BackColor = Color.White;
             _recheck.ForeColor = Color.FromArgb(95, 100, 110);
             _recheck.FlatStyle = FlatStyle.Flat;
@@ -1049,7 +1071,7 @@ namespace JswjSetup
             _precheckPage.Controls.Add(_recheck);
 
             _next.Text = "下一步";
-            _next.SetBounds(132, y, 150, 32);
+            _next.SetBounds(110, y, 130, 32);
             _next.BackColor = RunningColor;
             _next.ForeColor = Color.White;
             _next.FlatStyle = FlatStyle.Flat;
@@ -1057,7 +1079,7 @@ namespace JswjSetup
             _precheckPage.Controls.Add(_next);
 
             _preCancel.Text = "取消";
-            _preCancel.SetBounds(294, y, 96, 32);
+            _preCancel.SetBounds(250, y, 80, 32);
             _preCancel.Click += delegate { Close(); };
             _precheckPage.Controls.Add(_preCancel);
         }
