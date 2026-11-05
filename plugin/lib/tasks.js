@@ -143,8 +143,11 @@ function normalize(task) {
     }
     task.stepsVersion = 3;
   }
-  if (task.flow === "review" && task.data?.review && !task.data.review.mode) {
-    task.data.review.mode = "self";
+  if (task.flow === "review") {
+    if (task.data?.review && !task.data.review.mode) task.data.review.mode = "self";
+    const max = REVIEW_STEPS.length;
+    task.step = Math.max(1, Math.min(Number(task.step) || 1, max));
+    task.maxStep = Math.max(task.step, Math.min(Number(task.maxStep ?? task.step) || task.step, max));
   }
   if (!task.maxStep) task.maxStep = inferMaxStep(task);
   return task;
