@@ -963,6 +963,9 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
       case "update.apply":
         value = await applyUpdate(cfg);
         break;
+      case "update.progress":
+        value = updateRuntime;
+        break;
       case "summary.sync": {
         const task = await getTask(String(body.id ?? ""));
         if (task.status !== "completed") throw new Error("任务尚未完成，不能同步总结");
@@ -1574,7 +1577,13 @@ async function checkUpdate(cfg) {
   };
 }
 
-async function downloadUpdate(cfg, version) {
+let updateRuntime = { stage: "", percent: 0 };
+
+function setUpdateRuntime(stage, percent) {
+  updateRuntime = { stage, percent: Math.max(0, Math.min(100, Math.round(percent))) };
+}
+
+async function downloadUpdate(cfg, version, onProgress) {
   const info = await checkUpdate(cfg);
   if (!info.ok) throw new Error(info.error || "检查更新失败");
   if (!info.hasUpdate) throw new Error("当前已经是最新版本");
@@ -1584,7 +1593,24 @@ async function downloadUpdate(cfg, version) {
   const url = info.asset.url;
   const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
+  const total = Number(info.asset?.size) || Number(res.headers.get("content-length")) || 0;
+  let buffer;
+  if (res.body && res.body.getReader) {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(Buffer.from(value));
+      received += value.length;
+      if (onProgress) onProgress(received, total);
+    }
+    buffer = Buffer.concat(chunks);
+  } else {
+    buffer = Buffer.from(await res.arrayBuffer());
+    if (onProgress) onProgress(buffer.length, total || buffer.length);
+  }
   const dir = join(homedir(), ".dsh", "jswj-updates");
   await mkdir(dir, { recursive: true });
   const file = join(dir, info.asset?.name || `jswj-draft-${version || info.latest}.zip`);
@@ -1609,12 +1635,24 @@ async function extractZip(zipPath, dest) {
 
 /** 下载并覆盖当前插件目录；配置在 profile 里，不会被覆盖。 */
 async function applyUpdate(cfg) {
+  setUpdateRuntime("检查更新", 2);
   const info = await checkUpdate(cfg);
-  if (!info.ok) throw new Error(info.error || "检查更新失败");
-  if (!info.hasUpdate) return { updated: false, version: info.current, restartRequired: false };
-  const downloaded = await downloadUpdate(cfg, info.latest);
+  if (!info.ok) {
+    setUpdateRuntime("检查更新失败", 0);
+    throw new Error(info.error || "检查更新失败");
+  }
+  if (!info.hasUpdate) {
+    setUpdateRuntime("已是最新版本", 100);
+    return { updated: false, version: info.current, restartRequired: false };
+  }
+  setUpdateRuntime("下载更新包", 5);
+  const downloaded = await downloadUpdate(cfg, info.latest, (received, total) => {
+    setUpdateRuntime("下载更新包", total ? 5 + (received / total) * 45 : 30);
+  });
+  setUpdateRuntime("解压更新包", 55);
   const unpack = join(homedir(), ".dsh", "jswj-updates", `unpack-${Date.now()}`);
   await extractZip(downloaded.path, unpack);
+  setUpdateRuntime("校验更新包", 65);
   const pkg = JSON.parse(await readFile(join(unpack, "package.json"), "utf8"));
   if (!pkg.version) throw new Error("更新包缺少 package.json version");
   if (!isNewerVersion(pkg.version, info.current)) throw new Error("更新包版本不高于当前版本");
@@ -1624,11 +1662,13 @@ async function applyUpdate(cfg) {
   const script =
     `Copy-Item -LiteralPath ${psQuote(target)} -Destination ${psQuote(backup)} -Recurse -Force; ` +
     `Copy-Item -Path ${psQuote(join(unpack, "*"))} -Destination ${psQuote(target)} -Recurse -Force`;
+  setUpdateRuntime("备份并替换插件文件", 75);
   await execFileAsync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
     timeout: 180000,
     maxBuffer: 8 * 1024 * 1024,
     encoding: "utf8",
   });
+  setUpdateRuntime("更新完成，等待页面重载", 100);
   return { updated: true, version: pkg.version, backup, restartRequired: true };
 }
 

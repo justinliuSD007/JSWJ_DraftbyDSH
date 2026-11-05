@@ -2585,6 +2585,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
       const [updateOpen, setUpdateOpen] = React.useState(false);
       const [updateApplying, setUpdateApplying] = React.useState(false);
       const [updateStage, setUpdateStage] = React.useState("");
+      const [updatePercent, setUpdatePercent] = React.useState(0);
       const [health, setHealth] = React.useState({ loading: true });
       const [evidence, setEvidence] = React.useState(null);
       const [opinionBusy, setOpinionBusy] = React.useState(false);
@@ -2890,27 +2891,47 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
         await run(async () => {
           const info = await call("update.check");
           setUpdateInfo(info);
-          if (info.ok && info.hasUpdate) setUpdateOpen(true);
+          if (info.ok && info.hasUpdate) {
+            setUpdateOpen(true);
+            setUpdateStage("");
+            setUpdatePercent(0);
+          }
           setNotice(info.ok ? (info.hasUpdate ? `发现新版本 v${info.latest}` : `已是最新版本 v${info.current}`) : info.error);
         });
       };
 
       const applyUpdate = async () => {
         setUpdateApplying(true);
-        setUpdateStage("正在下载并替换插件文件，请不要关闭页面…");
+        setUpdateStage("准备更新…");
+        setUpdatePercent(0);
+        const timer = window.setInterval(async () => {
+          try {
+            const progress = await call("update.progress");
+            if (progress) {
+              setUpdateStage(progress.stage || "正在更新…");
+              setUpdatePercent(Number(progress.percent) || 0);
+            }
+          } catch {
+            /* 进度读取失败不影响更新 */
+          }
+        }, 500);
         try {
           const result = await call("update.apply");
           if (!result.updated) {
             setUpdateStage(`已是最新版本 v${result.version}`);
+            setUpdatePercent(100);
             setUpdateApplying(false);
             return;
           }
+          setUpdatePercent(100);
           setUpdateStage(`已更新到 v${result.version}，正在重新加载页面…`);
           setNotice(`已更新到 v${result.version}；即将重新加载。备份：${result.backup}`);
           window.setTimeout(() => window.location.reload(), 1600);
         } catch (err) {
           setUpdateStage(`更新失败：${String((err && err.message) || err)}`);
           setUpdateApplying(false);
+        } finally {
+          window.clearInterval(timer);
         }
       };
 
@@ -3386,6 +3407,26 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                         },
                         h("span", { style: { color: updateApplying ? C.warn : C.ok, fontWeight: 700 } }, updateApplying ? "…" : "✓"),
                         h("div", { style: s.rowMain }, h("div", { style: { fontSize: 12.5 } }, updateStage)),
+                      )
+                    : null,
+                  (updateApplying || updatePercent > 0) && updatePercent < 100
+                    ? h(
+                        "div",
+                        { style: { marginTop: 10 } },
+                        h(
+                          "div",
+                          { style: { height: 7, borderRadius: 4, background: C.layer2, overflow: "hidden" } },
+                          h("div", {
+                            style: {
+                              height: "100%",
+                              width: `${Math.max(2, updatePercent)}%`,
+                              borderRadius: 4,
+                              background: "linear-gradient(90deg, #3B3FB6 0%, #A64A97 100%)",
+                              transition: "width 300ms ease",
+                            },
+                          }),
+                        ),
+                        h("div", { style: { ...s.mono, marginTop: 4, textAlign: "right" } }, `${updatePercent}%`),
                       )
                     : null,
                   h(
