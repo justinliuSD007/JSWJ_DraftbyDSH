@@ -2582,6 +2582,9 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
       const [listFilter, setListFilter] = React.useState("all");
       const [query, setQuery] = React.useState("");
       const [updateInfo, setUpdateInfo] = React.useState(null);
+      const [updateOpen, setUpdateOpen] = React.useState(false);
+      const [updateApplying, setUpdateApplying] = React.useState(false);
+      const [updateStage, setUpdateStage] = React.useState("");
       const [health, setHealth] = React.useState({ loading: true });
       const [evidence, setEvidence] = React.useState(null);
       const [opinionBusy, setOpinionBusy] = React.useState(false);
@@ -2887,20 +2890,28 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
         await run(async () => {
           const info = await call("update.check");
           setUpdateInfo(info);
+          if (info.ok && info.hasUpdate) setUpdateOpen(true);
           setNotice(info.ok ? (info.hasUpdate ? `发现新版本 v${info.latest}` : `已是最新版本 v${info.current}`) : info.error);
         });
       };
 
       const applyUpdate = async () => {
-        await run(async () => {
+        setUpdateApplying(true);
+        setUpdateStage("正在下载并替换插件文件，请不要关闭页面…");
+        try {
           const result = await call("update.apply");
           if (!result.updated) {
-            setNotice(`已是最新版本 v${result.version}`);
+            setUpdateStage(`已是最新版本 v${result.version}`);
+            setUpdateApplying(false);
             return;
           }
-          setUpdateInfo(await call("update.check"));
-          setNotice(`已更新到 v${result.version}；请重载插件或重启 DSH 后生效。备份：${result.backup}`);
-        });
+          setUpdateStage(`已更新到 v${result.version}，正在重新加载页面…`);
+          setNotice(`已更新到 v${result.version}；即将重新加载。备份：${result.backup}`);
+          window.setTimeout(() => window.location.reload(), 1600);
+        } catch (err) {
+          setUpdateStage(`更新失败：${String((err && err.message) || err)}`);
+          setUpdateApplying(false);
+        }
       };
 
       const removeTask = async (id) => {
@@ -3310,6 +3321,104 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
               ),
             ),
           ),
+          updateOpen
+            ? h(
+                "div",
+                {
+                  style: {
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 1000,
+                    background: "rgba(15,18,35,0.42)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 20,
+                  },
+                },
+                h(
+                  "div",
+                  {
+                    style: {
+                      width: "min(560px, calc(100vw - 40px))",
+                      maxHeight: "min(78vh, 620px)",
+                      overflow: "auto",
+                      background: C.layer1,
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: 14,
+                      boxShadow: "0 18px 60px rgba(15,18,35,0.24)",
+                      padding: "18px 20px",
+                    },
+                  },
+                  h("div", { style: { fontSize: 16, fontWeight: 700, marginBottom: 4 } }, "发现新版本"),
+                  h(
+                    "div",
+                    { style: { ...s.mono, marginBottom: 12 } },
+                    `v${updateInfo?.current || "?"} → v${updateInfo?.latest || "?"}`,
+                  ),
+                  h(
+                    "div",
+                    { style: { ...s.note, whiteSpace: "pre-wrap", lineHeight: 1.65 } },
+                    updateInfo?.notes || "该版本没有填写更新说明。",
+                  ),
+                  updateInfo?.asset
+                    ? h(
+                        "div",
+                        { style: { ...s.mono, marginTop: 10 } },
+                        `${updateInfo.asset.name} · ${(updateInfo.asset.size / 1024 / 1024).toFixed(1)} MB`,
+                      )
+                    : null,
+                  h(
+                    "div",
+                    { style: { ...s.note, marginTop: 10 } },
+                    "更新会覆盖插件文件；配置、任务和凭据保留。完成后页面会自动重新加载。",
+                  ),
+                  updateStage
+                    ? h(
+                        "div",
+                        {
+                          style: {
+                            ...s.row,
+                            marginTop: 12,
+                            borderColor: updateApplying ? "rgba(199,120,0,0.30)" : "rgba(18,160,92,0.30)",
+                            background: updateApplying ? "rgba(199,120,0,0.07)" : "rgba(18,160,92,0.07)",
+                          },
+                        },
+                        h("span", { style: { color: updateApplying ? C.warn : C.ok, fontWeight: 700 } }, updateApplying ? "…" : "✓"),
+                        h("div", { style: s.rowMain }, h("div", { style: { fontSize: 12.5 } }, updateStage)),
+                      )
+                    : null,
+                  h(
+                    "div",
+                    { style: { ...s.footer, marginTop: 14 } },
+                    h(
+                      "button",
+                      {
+                        style: { ...s.btnSecondary, ...(updateApplying ? s.btnDisabled : {}) },
+                        disabled: updateApplying,
+                        onClick: () => {
+                          setUpdateOpen(false);
+                          setUpdateStage("");
+                        },
+                      },
+                      "取消",
+                    ),
+                    updateInfo?.url
+                      ? h("a", { style: s.link, href: updateInfo.url, target: "_blank", rel: "noreferrer" }, "查看发布说明")
+                      : null,
+                    h(
+                      "button",
+                      {
+                        style: { ...s.btn, ...(updateApplying ? s.btnDisabled : {}) },
+                        disabled: updateApplying,
+                        onClick: applyUpdate,
+                      },
+                      updateApplying ? "正在更新…" : "立即更新",
+                    ),
+                  ),
+                ),
+              )
+            : null,
         );
       }
 

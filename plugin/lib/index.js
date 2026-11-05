@@ -1568,6 +1568,7 @@ async function checkUpdate(cfg) {
     hasUpdate: isNewerVersion(latest, current),
     url: release.html_url,
     notes: release.body ?? "",
+    publishedAt: release.published_at ?? "",
     asset: asset ? { name: asset.name, size: asset.size, url: asset.browser_download_url } : null,
     source: "release",
   };
