@@ -1071,7 +1071,10 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
           type: d.review?.type || d.basic?.type || "需求规范",
           checklist: d.review?.checklist || "",
           file: d.review?.file || {},
-          issues: Array.isArray(d.review?.issues) ? d.review.issues : [],
+          issues: Array.isArray(d.review?.issues) ? d.review.issues.map((it) => ({ included: true, ...it })) : [],
+          mode: d.review?.mode === "handoff" ? "handoff" : "self",
+          report: d.review?.report || {},
+          revision: d.review?.revision || {},
           archived: Boolean(d.review?.archived),
           skipped: Boolean(d.review?.skipped),
         },
@@ -4212,6 +4215,21 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
             null,
             h(
               "div",
+              { style: s.field },
+              h("label", { style: s.label }, "预审用途"),
+              h(
+                "select",
+                {
+                  style: s.input,
+                  value: form.review.mode || "self",
+                  onChange: (e) => set({ review: { ...form.review, mode: e.target.value } }),
+                },
+                h("option", { value: "self" }, "自我检查并修订"),
+                h("option", { value: "handoff" }, "提交给编制人（只出预审报告）"),
+              ),
+            ),
+            h(
+              "div",
               { style: s.grid },
               h("div", { style: s.field },
                 h("label", { style: s.label }, "评审类型"),
@@ -4247,7 +4265,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                   )
                 : null,
 
-            h("div", { style: s.note }, "预审只出待确认问题，不输出通过或不通过结论。检查单一经确认即冻结，中途更换须新建任务。"),
+            h("div", { style: s.note }, "自我检查并修订：处置意见后生成修订版；提交给编制人：只生成预审报告，不要求逐条处置。预审只出待确认问题，不判定通过或不通过。"),
             h(
               "div",
               { style: s.footer },
@@ -4469,6 +4487,8 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
         // step 4
         const issues = form.review.issues || [];
         const groups = buildReviewGroups(issues);
+        const handoffMode = form.review.mode === "handoff";
+        const includedIssues = issues.filter((it) => it.included !== false);
         const decisionLabel = { accepted: "采纳", rejected: "驳回", rewritten: "改写" };
         const setIssue = (index, patch) =>
           set({
@@ -4479,67 +4499,85 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
           });
         const decided = issues.filter((it) => it.decision).length;
         const allDecided = issues.length > 0 && decided === issues.length;
+        const reportUrl = form.review.report?.url || form.publish?.url || "";
+        const revisionUrl = form.review.revision?.url || "";
         const archive = () => {
           setOpinionBusy(true);
           set({ publish: null });
           return run(async () => {
             try {
-            const severe = issues.filter((it) => it.severity === "严重").length;
-            const suggestion = issues.length - severe;
-            const checklistByType = {
-              需求规范: "需求规范评审单 v1（28 项）",
-              技术方案: "技术方案评审单 v2（32 项）",
-              安全性文件: "安全性文件评审单 v1（24 项）",
+              const targetIssues = handoffMode ? includedIssues : issues;
+              const reportGroups = buildReviewGroups(targetIssues);
+              const severe = targetIssues.filter((it) => it.severity === "严重").length;
+              const suggestion = targetIssues.length - severe;
+              const checklistByType = {
+                需求规范: "需求规范评审单 v1（28 项）",
+                技术方案: "技术方案评审单 v2（32 项）",
+                安全性文件: "安全性文件评审单 v1（24 项）",
                 审定计划: "审定计划评审单 v1（39 项）",
-            };
-            const checklistText = String(form.review.checklist || "").trim() || checklistByType[form.review.type] || "未填写";
-            const typeText = `${form.review.type || "未填写"}${form.review.subtype ? ` / ${form.review.subtype}` : ""}`;
-            const fileText = form.review.file?.title || form.review.file?.url || form.basic.name || "未记录";
-            const opinionBase = String(form.review.file?.title || form.basic.name || "技术文件")
-              .replace(/\.(docx?|md|markdown|txt)$/i, "")
-              .trim();
-            const issueLines = [];
-            let seq = 0;
-            for (const group of groups) {
-              issueLines.push(`**${group.category}**`);
-              issueLines.push("");
-              for (const entry of group.entries) {
-                const it = entry.item;
-                seq += 1;
-                issueLines.push(`**${seq}. ${it.severity || "建议"}｜${it.location || "未标注位置"}**`);
-                issueLines.push(`**问题：**${it.problem || ""}`);
-                issueLines.push(`**意见依据：**${it.basis || "缺依据"}`);
-                issueLines.push(`**建议修订方式：**${it.suggestion || "-"}`);
-                issueLines.push(`**处置：**${decisionLabel[it.decision] || "待定"}`);
+              };
+              const checklistText = String(form.review.checklist || "").trim() || checklistByType[form.review.type] || "未填写";
+              const typeText = `${form.review.type || "未填写"}${form.review.subtype ? ` / ${form.review.subtype}` : ""}`;
+              const fileText = form.review.file?.title || form.review.file?.url || form.basic.name || "未记录";
+              const opinionBase = String(form.review.file?.title || form.basic.name || "技术文件")
+                .replace(/\.(docx?|md|markdown|txt)$/i, "")
+                .trim();
+              const issueLines = [];
+              let seq = 0;
+              for (const group of reportGroups) {
+                issueLines.push(`**${group.category}**`);
                 issueLines.push("");
+                for (const entry of group.entries) {
+                  const it = entry.item;
+                  seq += 1;
+                  issueLines.push(`**${seq}. ${it.severity || "建议"}｜${it.location || "未标注位置"}**`);
+                  issueLines.push(`**问题：**${it.problem || ""}`);
+                  issueLines.push(`**意见依据：**${it.basis || "缺依据"}`);
+                  issueLines.push(`**建议修订方式：**${it.suggestion || "-"}`);
+                  const evidence = it.evidence && typeof it.evidence === "object" ? it.evidence : {};
+                  const quote = String(evidence.quote || "").replace(/\s+/g, " ").trim();
+                  if (quote) {
+                    issueLines.push(`**原文摘录：**`);
+                    issueLines.push(`> ${quote.slice(0, 320)}${quote.length > 320 ? "…" : ""}`);
+                  }
+                  if (!handoffMode) issueLines.push(`**处置：**${decisionLabel[it.decision] || "待定"}`);
+                  issueLines.push("");
+                }
               }
-            }
-            const markdown = [
-              `# ${form.basic.name || form.review.file?.title || "技术文件"} · 预审意见`,
-              "",
-              "**预审对象**",
-              `**受审文件：**${fileText}`,
-              `**文件类型：**${typeText}`,
-              `**使用检查单：**${checklistText}`,
-              `**任务号：**${task.id}`,
-              "",
-              "**意见汇总**",
-              `共 ${issues.length} 条意见，其中严重 ${severe} 条、建议 ${suggestion} 条。`,
-              "",
-              "**意见清单**",
-              "",
-              ...issueLines,
-              "**说明**",
-              "本意见书只列待确认问题，不输出通过或不通过结论。",
-            ].join("\n");
-            const result = await call("review.publish", {
-              id: task.id,
-              markdown,
-              title: `${opinionBase || "技术文件"}-预审意见`,
-            });
-            set({ publish: { url: result.url, at: result.at || new Date().toISOString() } });
-            setTask(await call("tasks.get", { id: task.id }));
-            setNotice("预审意见已输出到知识库。");
+              const topRisks = targetIssues
+                .filter((it) => it.severity === "严重")
+                .slice(0, 3)
+                .map((it) => `${it.location || "未标注"} ${it.problem || ""}`.trim())
+                .filter(Boolean);
+              const markdown = [
+                `# ${opinionBase || "技术文件"} · ${handoffMode ? "预审报告" : "预审意见"}`,
+                "",
+                "**预审对象**",
+                `**受审文件：**${fileText}`,
+                `**文件类型：**${typeText}`,
+                `**使用检查单：**${checklistText}`,
+                `**任务号：**${task.id}`,
+                `**评审用途：**${handoffMode ? "提交编制人" : "自我检查并修订"}`,
+                "",
+                "**意见汇总**",
+                `共 ${targetIssues.length} 条意见，其中严重 ${severe} 条、建议 ${suggestion} 条。`,
+                topRisks.length ? `**主要风险：**${topRisks.join("；")}` : "",
+                "",
+                "**意见明细**",
+                "",
+                ...issueLines,
+                "**说明**",
+                "本报告只列待确认问题，不判定通过或不通过；引文为受审文件原文摘录，完整上下文请在插件中查看。",
+              ].filter((line) => line !== "").join("\n");
+              const result = await call("review.publish", {
+                id: task.id,
+                kind: handoffMode ? "report" : "opinion",
+                markdown,
+                title: `${opinionBase || "技术文件"}-${handoffMode ? "预审报告" : "预审意见"}`,
+              });
+              set({ publish: { url: result.url, at: result.at || new Date().toISOString() } });
+              setTask(await call("tasks.get", { id: task.id }));
+              setNotice(handoffMode ? "预审报告已生成。" : "预审意见已输出。");
             } finally {
               setOpinionBusy(false);
             }
@@ -4555,50 +4593,66 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
             h(
               "button",
               { style: s.btnSecondary, disabled: busy, onClick: () => savePatch({ data: { review: { ...form.review, issues } } }) },
-              "保存处置",
+              handoffMode ? "保存整理" : "保存处置",
             ),
-            h("button", { style: s.btnSecondary, onClick: () => handoff(4, "如需协助修订，只改意见指出的位置。") }, sessionFor(4) ? "打开本步会话" : "交给助手协助修订"),
-            sessionFor(4)
-              ? h("button", { style: s.btnSecondary, onClick: () => handoff(4, "如需协助修订，只改意见指出的位置。", true) }, "新建会话")
-              : null,
-            h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4, "如需协助修订，只改意见指出的位置。") }, "复制指令"),
-            h(
-              "button",
-              { style: s.btnSecondary, disabled: busy, onClick: () => submit({ review: { ...form.review, issues, archived: true, skipped: true } }) },
-              "跳过处置，保存任务",
-            ),
-            h(
-              "button",
-              {
-                style: s.btnSecondary,
-                disabled: busy,
-                onClick: () =>
-                  handoff(
-                    5,
-                    `本任务已存档，现需依据 review.issues 的处置意见修订受审文件并出稿。
+            handoffMode
+              ? h(
+                  "button",
+                  { style: { ...s.btn, ...(busy || !includedIssues.length ? s.btnDisabled : {}) }, disabled: busy || !includedIssues.length, onClick: archive },
+                  opinionBusy ? "正在生成…" : "生成预审报告",
+                )
+              : h("button", { style: s.btnSecondary, onClick: () => handoff(4, "如需协助修订，只改意见指出的位置。") }, sessionFor(4) ? "打开本步会话" : "交给助手协助修订"),
+            handoffMode
+              ? null
+              : sessionFor(4)
+                ? h("button", { style: s.btnSecondary, onClick: () => handoff(4, "如需协助修订，只改意见指出的位置。", true) }, "新建会话")
+                : null,
+            handoffMode ? null : h("button", { style: s.btnSecondary, onClick: () => copyPrompt(4, "如需协助修订，只改意见指出的位置。") }, "复制指令"),
+            handoffMode
+              ? null
+              : h(
+                  "button",
+                  { style: s.btnSecondary, disabled: busy, onClick: () => submit({ review: { ...form.review, issues, archived: true, skipped: true } }) },
+                  "跳过处置，保存任务",
+                ),
+            handoffMode
+              ? null
+              : h(
+                  "button",
+                  {
+                    style: s.btnSecondary,
+                    disabled: busy,
+                    onClick: () =>
+                      handoff(
+                        4,
+                        `本任务已整理意见，现需依据 review.issues 修订受审文件并出稿。
 受审文件：${form.review.file?.title || form.review.file?.url || "-"}
 本地解析文本：${form.review.file?.textPath || "无；请按受审文件链接读取正文"}
-要求：只改意见指出的位置，不整体润色、不补写整节；保留原结构和未涉及内容；用 jswj_render_docx 套 GY-F003，发布到知识库，并回写 publish.url。`,
-                    true,
-                  ),
-              },
-              "依据意见修订出稿",
-            ),
-            h(
-              "button",
-              { style: s.btnSecondary, disabled: busy || issues.length === 0, onClick: archive },
-              opinionBusy ? "正在输出…" : "单独输出预审意见",
-            ),
-            h(
-              "button",
-              { style: { ...s.btnSecondary, ...(busy || !allDecided ? s.btnDisabled : {}) }, disabled: busy || !allDecided, onClick: archive },
-              "存档意见书",
-            ),
+要求：只改意见指出的位置，不整体润色、不补写整节；保留原结构和未涉及内容；用 jswj_render_docx 套 GY-F003，发布到知识库；把链接写入 review.revision.url 和 publish.url。`,
+                        true,
+                      ),
+                  },
+                  "按意见修订",
+                ),
+            handoffMode
+              ? null
+              : h(
+                  "button",
+                  { style: s.btnSecondary, disabled: busy || issues.length === 0, onClick: archive },
+                  opinionBusy ? "正在输出…" : "导出预审意见（留档）",
+                ),
             h(
               "button",
               {
-                style: { ...s.btn, ...(busy || !allDecided || !(form.publish?.url || form.review.archived) ? s.btnDisabled : {}) },
-                disabled: busy || !allDecided || !(form.publish?.url || form.review.archived),
+                style: {
+                  ...s.btn,
+                  ...(busy
+                    ? s.btnDisabled
+                    : handoffMode
+                      ? !reportUrl ? s.btnDisabled : {}
+                      : !allDecided || !revisionUrl ? s.btnDisabled : {}),
+                },
+                disabled: busy || (handoffMode ? !reportUrl : !allDecided || !revisionUrl),
                 onClick: () => submit({ review: { ...form.review, issues, archived: true } }),
               },
               "完成",
@@ -4608,43 +4662,17 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
           opinionBusy
             ? h(
                 "div",
-                {
-                  style: {
-                    ...s.row,
-                    borderColor: "rgba(199,120,0,0.35)",
-                    background: "rgba(199,120,0,0.08)",
-                  },
-                },
+                { style: { ...s.row, borderColor: "rgba(199,120,0,0.35)", background: "rgba(199,120,0,0.08)" } },
                 h("span", { style: { color: C.warn, fontWeight: 700 } }, "…"),
-                h(
-                  "div",
-                  { style: s.rowMain },
-                  h("div", { style: { fontWeight: 600 } }, "正在输出预审意见…"),
-                  h("div", { style: s.mono }, "生成飞书云文档中，请稍候"),
-                ),
+                h("div", { style: s.rowMain }, h("div", { style: { fontWeight: 600 } }, handoffMode ? "正在生成预审报告…" : "正在输出预审意见…"), h("div", { style: s.mono }, "生成飞书云文档中，请稍候")),
               )
-            : form.publish?.url
+            : reportUrl
               ? h(
                   "div",
-                  {
-                    style: {
-                      ...s.row,
-                      borderColor: "rgba(18,160,92,0.35)",
-                      background: "rgba(18,160,92,0.08)",
-                    },
-                  },
+                  { style: { ...s.row, borderColor: "rgba(18,160,92,0.35)", background: "rgba(18,160,92,0.08)" } },
                   h("span", { style: { color: C.ok, fontWeight: 700 } }, "✓"),
-                  h(
-                    "div",
-                    { style: s.rowMain },
-                    h("div", { style: { fontWeight: 600 } }, "预审意见已输出到知识库"),
-                    h(
-                      "div",
-                      { style: s.mono },
-                      `${form.publish.at ? String(form.publish.at).replace("T", " ").slice(0, 19) + " · " : ""}${form.publish.url}`,
-                    ),
-                  ),
-                  h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, "打开"),
+                  h("div", { style: s.rowMain }, h("div", { style: { fontWeight: 600 } }, handoffMode ? "预审报告已生成" : "预审意见已输出到知识库"), h("div", { style: s.mono }, `${form.publish.at ? String(form.publish.at).replace("T", " ").slice(0, 19) + " · " : ""}${reportUrl}`)),
+                  h("a", { style: s.link, href: reportUrl, target: "_blank", rel: "noreferrer" }, "打开"),
                 )
               : null,
           h(
@@ -4654,12 +4682,8 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
             h(
               "div",
               { style: s.rowMain },
-              h("div", null, `${issues.length} 条意见 · 已处置 ${decided}/${issues.length}`),
-              h(
-                "div",
-                { style: s.mono },
-                `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；可逐条采纳、驳回或改写；也可以先跳过，保存任务后再处理`,
-              ),
+              h("div", null, handoffMode ? `${includedIssues.length}/${issues.length} 条纳入报告` : `${issues.length} 条意见 · 已处置 ${decided}/${issues.length}`),
+              h("div", { style: s.mono }, handoffMode ? "报告面向编制人，不需要逐条处置；可取消勾选误报" : `${issues.filter((i) => i.severity === "严重").length} 严重 · ${issues.filter((i) => i.severity !== "严重").length} 建议；可逐条采纳、驳回或改写`),
             ),
           ),
           groups.map((group) => {
@@ -4669,12 +4693,7 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
               { key: group.category },
               h(
                 "button",
-                {
-                  type: "button",
-                  style: s.groupHeader,
-                  onClick: () => toggleCategory(group.category),
-                  "aria-expanded": !collapsed,
-                },
+                { type: "button", style: s.groupHeader, onClick: () => toggleCategory(group.category), "aria-expanded": !collapsed },
                 h("span", { style: s.groupChevron }, collapsed ? "▸" : "▾"),
                 h("span", null, group.category),
                 h("span", { style: s.groupCount }, ` · ${group.entries.length} 条（严重 ${group.severe} / 建议 ${group.suggestion}）`),
@@ -4689,56 +4708,40 @@ if (typeof document !== "undefined" && !document.getElementById("jswj-font-face"
                       const i = entry.index;
                       return h(
                         "div",
-                        { key: i, style: { ...s.row, flexDirection: "column", alignItems: "stretch", gap: 8 } },
-                        h(
-                          "div",
-                          { style: { display: "flex", gap: 8, alignItems: "center" } },
-                          h("span", { style: { color: it.severity === "严重" ? C.err : C.warn } }, it.severity === "严重" ? "●" : "○"),
-                          h(
-                            "div",
-                            { style: s.rowMain },
-                            h("div", null, `${it.location || ""} ${it.problem || ""}`),
-                            h("div", { style: s.mono }, `依据：${it.basis || "缺依据"}；建议：${it.suggestion || "-"}`),
-                          ),
-                          h("span", { style: s.badge }, it.dimension || "内容"),
-                        ),
-                        h(
-                          "div",
-                          { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
-                          ["accepted", "rejected", "rewritten"].map((key) =>
-                            h(
-                              "button",
-                              {
-                                key,
-                                style: {
-                                  ...s.btnSecondary,
-                                  background: it.decision === key ? PRIMARY : "transparent",
-                                  color: it.decision === key ? "#fff" : C.text,
-                                },
-                                onClick: () => setIssue(i, { decision: key }),
-                              },
-                              decisionLabel[key],
+                        { key: i, style: s.issueCard, onClick: () => selectEvidence(i), title: "点击查看原文或原图" },
+                        h(IssueHeadline, { issue: it }),
+                        h(IssueDetail, { issue: it }),
+                        handoffMode
+                          ? h(
+                              "label",
+                              { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12, color: C.sub }, onClick: (event) => event.stopPropagation() },
+                              h("input", {
+                                type: "checkbox",
+                                checked: it.included !== false,
+                                onChange: (e) => setIssue(i, { included: e.target.checked }),
+                              }),
+                              "纳入报告",
+                            )
+                          : h(
+                              "div",
+                              { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }, onClick: (event) => event.stopPropagation() },
+                              ["accepted", "rejected", "rewritten"].map((key) =>
+                                h(
+                                  "button",
+                                  { key, style: { ...s.btnSecondary, background: it.decision === key ? PRIMARY : "transparent", color: it.decision === key ? "#fff" : C.text }, onClick: () => setIssue(i, { decision: key }) },
+                                  decisionLabel[key],
+                                ),
+                              ),
+                              it.decision === "rejected" || it.decision === "rewritten"
+                                ? h("input", { style: { ...s.input, flex: "1 1 220px" }, value: it.decisionReason || "", placeholder: it.decision === "rejected" ? "驳回理由（必填）" : "改写说明", onChange: (e) => setIssue(i, { decisionReason: e.target.value }) })
+                                : null,
                             ),
-                          ),
-                          it.decision === "rejected" || it.decision === "rewritten"
-                            ? h("input", {
-                                style: { ...s.input, flex: "1 1 220px" },
-                                value: it.decisionReason || "",
-                                placeholder: it.decision === "rejected" ? "驳回理由（必填）" : "改写说明",
-                                onChange: (e) => setIssue(i, { decisionReason: e.target.value }),
-                              })
-                            : null,
-                        ),
                       );
                     }),
                   ),
             );
           }),
-          h("div", { style: s.note }, "存档目录：技术资料起草库 / 技术资料出稿库 / 预审 / {评审类型} / {任务号} /。协助修订只按意见逐条改，不整体润色、不补写整节。"),
-          form.publish?.url
-            ? h("div", { style: s.note }, "已存档：", h("a", { style: s.link, href: form.publish.url, target: "_blank", rel: "noreferrer" }, form.publish.url))
-            : null,
-
+          h("div", { style: s.note }, handoffMode ? "报告会写入受审文件、检查单、每条意见和原文摘录；只输出勾选的意见。" : "协助修订只按意见逐条改，不整体润色、不补写整节。"),
         );
       };
 

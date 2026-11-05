@@ -143,6 +143,9 @@ function normalize(task) {
     }
     task.stepsVersion = 3;
   }
+  if (task.flow === "review" && task.data?.review && !task.data.review.mode) {
+    task.data.review.mode = "self";
+  }
   if (!task.maxStep) task.maxStep = inferMaxStep(task);
   return task;
 }
@@ -230,8 +233,11 @@ export async function createTask(flow) {
         confirmed: false,
         type: "需求规范",
         checklist: "",
+        mode: "self",
         file: {},
         issues: [],
+        report: {},
+        revision: {},
         archived: false,
       },
     },
@@ -314,10 +320,15 @@ export function evaluateGate(flow, step, task) {
   if (step === 2) need(d.review?.file?.ok === true, "Q2：受审文件尚未解析成功");
   if (step === 3) need((d.review?.issues ?? []).length > 0, "Q3：预审尚未产出意见");
   if (step === 4) {
-    const undecided = (d.review?.issues ?? []).filter((item) => !item.decision);
-    const skipped = d.review?.skipped === true;
-    need(skipped || undecided.length === 0, `Q4：还有 ${undecided.length} 条意见未处置（采纳 / 驳回 / 改写）`);
-    need(d.review?.archived === true, "Q4：意见书尚未存档");
+    const mode = d.review?.mode === "handoff" ? "handoff" : "self";
+    if (mode === "handoff") {
+      need(Boolean(d.review?.report?.url || d.review?.archived), "Q4：预审报告尚未生成");
+    } else {
+      const undecided = (d.review?.issues ?? []).filter((item) => !item.decision);
+      const skipped = d.review?.skipped === true;
+      need(skipped || undecided.length === 0, `Q4：还有 ${undecided.length} 条意见未处置（采纳 / 驳回 / 改写）`);
+      need(skipped || Boolean(d.review?.revision?.url), "Q4：修订版尚未输出");
+    }
   }
 }
 

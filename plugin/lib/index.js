@@ -1076,6 +1076,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
       case "review.publish": {
         const markdown = String(body.markdown ?? "").trim();
         const title = String(body.title ?? "").trim();
+        const kind = body.kind === "report" ? "report" : "opinion";
         if (!markdown) throw new Error("预审意见内容不能为空");
         if (!title) throw new Error("预审意见标题不能为空");
         const outRoot = await ensureWikiChild(cfg, cfg.rootToken || "", "技术资料出稿库");
@@ -1093,7 +1094,7 @@ async function handleJswjRequest(req, res, { ctx, webServer, cfg }) {
               publish: { url, nodeToken: made.nodeToken, title, at },
               review: {
                 ...(current.data?.review || {}),
-                opinion: { url, nodeToken: made.nodeToken, title, at },
+                [kind === "report" ? "report" : "opinion"]: { url, nodeToken: made.nodeToken, title, at },
               },
             },
           });
